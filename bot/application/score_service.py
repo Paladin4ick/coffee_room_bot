@@ -10,6 +10,7 @@ from bot.domain.entities import (
     ScoreEvent,
 )
 from bot.domain.reaction_registry import ReactionRegistry
+from bot.domain.emoji_utils import normalize_emoji
 
 from bot.application.interfaces.score_repository import IScoreRepository
 from bot.application.interfaces.event_repository import IEventRepository
@@ -65,6 +66,7 @@ class ScoreService:
         message_id: int,
         emoji: str,
     ) -> ApplyResult:
+        emoji = normalize_emoji(emoji)
         # 1. Реакция в реестре?
         reaction = self._registry.get(emoji)
         if reaction is None:
@@ -138,6 +140,7 @@ class ScoreService:
         message_id: int,
         emoji: str,
     ) -> ApplyResult:
+        emoji = normalize_emoji(emoji)
         # Найти и удалить оригинальное событие
         event = await self._event_repo.find_and_delete(actor_id, message_id, emoji)
         if event is None:
