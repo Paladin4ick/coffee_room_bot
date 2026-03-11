@@ -642,7 +642,7 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
             await message.bot.promote_chat_member(
                 chat_id=message.chat.id,
                 user_id=target.id,
-                **MODERATOR_PERMS,
+                can_invite_users=True
             )
         except Exception:
             logger.exception("Failed to op user %d", target.id)
@@ -651,6 +651,63 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
         await saved_perms_repo.save(target.id, message.chat.id, MODERATOR_PERMS)
         await message.reply(
             formatter._t["op_success"].format(user=display),
+            parse_mode=ParseMode.HTML,
+            link_preview_options=NO_PREVIEW,
+        )
+
+    @router.message(Command("deop"))
+    @inject
+    async def cmd_deop(
+        message: Message,
+        command: CommandObject,
+        user_repo: FromDishka[IUserRepository],
+        saved_perms_repo: FromDishka[ISavedPermissionsRepository],
+        formatter: FromDishka[MessageFormatter],
+        config: FromDishka[AppConfig],
+    ) -> None:
+        if message.from_user is None or message.bot is None:
+            return
+        if not _is_admin(message.from_user.username, config.admin.users):
+            await message.reply(formatter._t["admin_not_allowed"])
+            return
+        target = await _resolve_username(command.args, user_repo)
+        if target is None:
+            await message.reply(formatter._t["op_usage"])
+            return
+        display = user_link(target.username, target.full_name, target.id)
+        try:
+            member = await message.bot.get_chat_member(message.chat.id, target.id)
+        except Exception:
+            await message.reply(formatter._t["op_failed"])
+            return
+        if isinstance(member, ChatMemberOwner):
+            await message.reply(
+                formatter._t["op_already"].format(user=display),  # нельзя снять owner-а
+                parse_mode=ParseMode.HTML,
+                link_preview_options=NO_PREVIEW,
+            )
+            return
+        if not isinstance(member, ChatMemberAdministrator):
+            await message.reply(
+                formatter._t["deop_not_admin"].format(user=display),
+                parse_mode=ParseMode.HTML,
+                link_preview_options=NO_PREVIEW,
+            )
+            return
+        try:
+            # Передаём все права как False — это снимает статус админа
+            demote_kw = {f: False for f in ADMIN_PERM_FIELDS}
+            await message.bot.promote_chat_member(
+                chat_id=message.chat.id,
+                user_id=target.id,
+                **demote_kw,
+            )
+        except Exception:
+            logger.exception("Failed to deop user %d", target.id)
+            await message.reply(formatter._t["op_failed"])
+            return
+        await message.reply(
+            formatter._t["deop_success"].format(user=display),
             parse_mode=ParseMode.HTML,
             link_preview_options=NO_PREVIEW,
         )

@@ -43,5 +43,6 @@ services:
       - ./config.yaml:/app/config.yaml:ro
       - ./messages.yaml:/app/messages.yaml:ro
 
+ 
 volumes:
   pgdata:
