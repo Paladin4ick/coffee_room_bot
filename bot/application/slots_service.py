@@ -46,7 +46,12 @@ class SlotsConfig:
     min_bet: int = 1
     max_bet: int = 200
     reels: int = 3          # количество барабанов
-    rtp_bias: float = 0.95  # 0.95 = 95% RTP
+    rtp_bias: float = 1.0   # 1.0 = нейтрально; RTP управляется через near_miss_multiplier
+
+    # Множитель ставки при near miss (2 из 3 совпали).
+    # Именно этот параметр определяет итоговый RTP:
+    #   0.45  → ~121%  |  0.40 → ~118%  |  0.0 → ~95%  |  -1.0 → ~35% (старое поведение)
+    near_miss_multiplier: float = 0.45
 
     symbols: list[SlotSymbol] = field(default_factory=lambda: [
         SlotSymbol("🍒", weight=40, multiplier=2.0),
@@ -124,10 +129,12 @@ class SlotsMachine:
             multiplier = symbol.multiplier
             delta = int(bet * multiplier)
         elif len(set(emojis)) == self._cfg.reels - 1:
-            # Near miss — почти выиграл (2 из 3 одинаковых)
+            # Near miss — почти выиграл (2 из 3 одинаковых).
+            # Платим near_miss_multiplier × ставку — это основной рычаг RTP.
+            # 0.45 → RTP ≈ 121% при стандартных весах символов.
             outcome = SpinOutcome.NEAR_MISS
-            multiplier = 0.0
-            delta = -bet
+            multiplier = self._cfg.near_miss_multiplier
+            delta = int(bet * multiplier)
         else:
             outcome = SpinOutcome.LOSS
             multiplier = 0.0
@@ -143,13 +150,20 @@ class SlotsMachine:
 
     @property
     def theoretical_rtp(self) -> float:
-        """Считает теоретический RTP на основе весов и rtp_bias."""
+        """Считает теоретический RTP с учётом near_miss_multiplier."""
         total_weight = sum(s.weight for s in self._cfg.symbols)
-        rtp = 0.0
-        for s in self._cfg.symbols:
-            prob = (s.weight / total_weight) ** self._cfg.reels
-            rtp += prob * s.multiplier
-        return rtp * self._cfg.rtp_bias
+        p = [s.weight / total_weight for s in self._cfg.symbols]
+
+        p_win = sum(pi ** self._cfg.reels for pi in p)
+        p_near = self._cfg.reels * sum(pi**2 * (1 - pi) for pi in p)
+        p_loss = 1.0 - p_win - p_near
+
+        ev_win = sum((pi ** self._cfg.reels) * s.multiplier
+                     for pi, s in zip(p, self._cfg.symbols))
+        ev_near = p_near * self._cfg.near_miss_multiplier
+        ev_loss = p_loss * (-1.0)
+
+        return 1.0 + ev_win + ev_near + ev_loss
 
 
 # ── Сервис ────────────────────────────────────────────────────────
