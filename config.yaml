@@ -57,3 +57,7 @@ llm:
   search_max_results: 7         # сколько результатов поиска парсить
 
 
+auto_react:
+  enabled: true
+  probability: 0.5   # 5% — каждое 20-е сообщение в среднем
+  positive_only: true # только 👍❤️🔥 итд, без 💩👎

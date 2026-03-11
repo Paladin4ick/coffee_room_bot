@@ -47,12 +47,17 @@ class AdminConfig:
 
 
 @dataclass
+class AutoReactConfig:
+    enabled: bool = False
+    probability: float = 0.05     # вероятность реакции на каждое сообщение (0.0–1.0)
+    positive_only: bool = True    # только реакции с weight > 0
+
+
+@dataclass
 class MuteConfig:
     cost_per_minute: int = 20
     min_minutes: int = 1
     max_minutes: int = 120
-    selfmute_min_minutes: int = 1
-    selfmute_max_minutes: int = 1440  # 24 часа
 
 
 @dataclass
@@ -84,28 +89,26 @@ class LlmConfig:
         "ВСЕ теги ОБЯЗАТЕЛЬНО закрывай."
     )
     search_system_prompt: str = (
-        "КРИТИЧЕСКИ ВАЖНО — ФОРМАТ ОТВЕТА:\n"
-        "Ты пишешь для Telegram. Используй ТОЛЬКО Telegram HTML.\n"
-        "РАЗРЕШЁННЫЕ теги: <b>, <i>, <a href=\"URL\">текст</a>\n"
-        "Списки: «— » (тире с пробелом) или «1. »\n"
-        "ЗАПРЕЩЕНО использовать: ## # ** * ``` _ [текст](url) "
-        "<sup> <sub> <span> <div> <h1> <h2> <h3> <ul> <li>\n"
-        "ВСЕ теги ОБЯЗАТЕЛЬНО закрывай.\n\n"
         "Ты — поисковый ассистент. Тебе даны результаты поиска "
         "с извлечённым контентом страниц.\n\n"
         "Дай развёрнутый ответ на русском, используя ТОЛЬКО факты "
         "из предоставленных источников. Если данных недостаточно, "
         "так и напиши.\n\n"
         "ССЫЛКИ — ОБЯЗАТЕЛЬНО:\n"
-        "— КАЖДЫЙ упомянутый товар/модель/факт ДОЛЖЕН иметь ссылку.\n"
-        "— НЕ упоминай товар без ссылки. Если нет URL — не упоминай.\n"
-        "— Вставляй ссылки ИНЛАЙН: "
+        "- КАЖДЫЙ упомянутый товар/модель/факт ДОЛЖЕН иметь ссылку.\n"
+        "- НЕ упоминай товар без ссылки. Если нет URL — не упоминай.\n"
+        "- Вставляй ссылки ИНЛАЙН: "
         "«<a href=\"URL\">Dyson V15</a> имеет мощность 230 Вт»\n"
-        "— Текст ссылки — КОРОТКИЙ: название модели или домен.\n"
-        "— Используй ТОЛЬКО URL из предоставленных источников.\n"
-        "— В конце добавь блок:\n<b>Источники:</b>\n"
+        "- Текст ссылки — КОРОТКИЙ: название модели или домен.\n"
+        "- Используй ТОЛЬКО URL из предоставленных источников.\n"
+        "- В конце добавь блок:\n<b>Источники:</b>\n"
         "— <a href=\"URL\">короткое название</a>\n\n"
-        "ЛИМИТ: ответ НЕ БОЛЕЕ 3500 символов."
+        "ЛИМИТ: ответ НЕ БОЛЕЕ 3500 символов.\n\n"
+        "ФОРМАТ — строго Telegram HTML:\n"
+        "- <b>жирный</b>, <i>курсив</i>, <a href=\"URL\">текст</a>\n"
+        "- Списки: «— » или «1. »\n"
+        "- ЗАПРЕЩЕНО: **, *, <sup>, <sub>, <span>, <div>, [текст](url)\n"
+        "- ВСЕ теги ОБЯЗАТЕЛЬНО закрывай."
     )
 
 
@@ -118,6 +121,7 @@ class AppConfig:
     history: HistoryConfig = field(default_factory=HistoryConfig)
     admin: AdminConfig = field(default_factory=AdminConfig)
     mute: MuteConfig = field(default_factory=MuteConfig)
+    auto_react: AutoReactConfig = field(default_factory=AutoReactConfig)
     tag: TagConfig = field(default_factory=TagConfig)
     blackjack: BlackjackConfig = field(default_factory=BlackjackConfig)
     llm: LlmConfig = field(default_factory=LlmConfig)
@@ -132,6 +136,7 @@ def load_config(path: str | Path = "config.yaml") -> AppConfig:
     history_raw = raw.get("history", {})
     admin_raw = raw.get("admin", {})
     mute_raw = raw.get("mute", {})
+    auto_react_raw = raw.get("auto_react", {})
     tag_raw = raw.get("tag", {})
     blackjack_raw = raw.get("blackjack", {})
     llm_raw = raw.get("llm", {})
@@ -150,6 +155,7 @@ def load_config(path: str | Path = "config.yaml") -> AppConfig:
             users=users,
         ),
         mute=MuteConfig(**mute_raw),
+        auto_react=AutoReactConfig(**auto_react_raw),
         tag=TagConfig(**tag_raw),
         blackjack=BlackjackConfig(**blackjack_raw),
         llm=LlmConfig(**llm_raw),

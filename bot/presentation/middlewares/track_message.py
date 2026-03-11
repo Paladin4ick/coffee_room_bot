@@ -1,20 +1,28 @@
 from __future__ import annotations
 
+import logging
+import random
 from datetime import datetime
 from bot.domain.tz import TZ_MSK
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
-from aiogram.types import Message, TelegramObject
+from aiogram.types import Message, TelegramObject, ReactionTypeEmoji
 from dishka import AsyncContainer
 
 from bot.domain.entities import User
 from bot.application.interfaces.user_repository import IUserRepository
 from bot.application.interfaces.message_repository import IMessageRepository, MessageInfo
+from bot.application.score_service import ScoreService
+from bot.domain.reaction_registry import ReactionRegistry
+from bot.infrastructure.config_loader import AppConfig
+
+logger = logging.getLogger(__name__)
 
 
 class TrackMessageMiddleware(BaseMiddleware):
     """Записывает автора и время каждого входящего сообщения.
+    Опционально ставит случайную реакцию с заданной вероятностью.
 
     Работает как outer-middleware на Message — вызывается ДО хэндлеров,
     поэтому и команды, и обычные сообщения трекаются.
@@ -48,4 +56,54 @@ class TrackMessageMiddleware(BaseMiddleware):
                 )
             )
 
+            await self._maybe_react(event, container)
+
         return await handler(event, data)
+
+    async def _maybe_react(self, message: Message, container: AsyncContainer) -> None:
+        config = await container.get(AppConfig)
+        cfg = config.auto_react
+
+        if not cfg.enabled:
+            return
+        if message.bot is None or message.from_user is None:
+            return
+        # Не реагируем на сообщения самого бота
+        if message.from_user.id == message.bot.id:
+            return
+        # Бросаем кубик
+        if random.random() >= cfg.probability:
+            return
+
+        registry = await container.get(ReactionRegistry)
+        reactions = [
+            (emoji, r) for emoji, r in registry._reactions.items()
+            if not cfg.positive_only or r.weight > 0
+        ]
+        if not reactions:
+            return
+
+        emoji, _ = random.choice(reactions)
+
+        try:
+            await message.bot.set_message_reaction(
+                chat_id=message.chat.id,
+                message_id=message.message_id,
+                reaction=[ReactionTypeEmoji(type="emoji", emoji=emoji)],
+            )
+        except Exception as e:
+            logger.debug("auto_react: failed to set reaction: %s", e)
+            return
+
+        # Засчитываем реакцию вручную — бот не получает события о своих реакциях
+        score_service = await container.get(ScoreService)
+        result = await score_service.apply_reaction(
+            actor_id=message.bot.id,
+            chat_id=message.chat.id,
+            message_id=message.message_id,
+            emoji=emoji,
+        )
+        logger.debug(
+            "auto_react: %s on msg %d — applied=%s",
+            emoji, message.message_id, result.applied,
+        )
