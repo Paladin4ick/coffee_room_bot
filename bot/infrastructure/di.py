@@ -12,6 +12,7 @@ from bot.application.interfaces.daily_limits_repository import IDailyLimitsRepos
 from bot.application.interfaces.user_repository import IUserRepository
 from bot.application.interfaces.message_repository import IMessageRepository
 from bot.application.interfaces.mute_repository import IMuteRepository
+from bot.application.interfaces.mute_protection_repository import IMuteProtectionRepository
 from bot.application.interfaces.saved_permissions_repository import ISavedPermissionsRepository
 from bot.application.interfaces.llm_repository import ILlmRepository
 from bot.application.interfaces.transaction_manager import ITransactionManager
@@ -35,6 +36,7 @@ from bot.infrastructure.db.postgres_daily_limits_repository import PostgresDaily
 from bot.infrastructure.db.postgres_user_repository import PostgresUserRepository
 from bot.infrastructure.db.postgres_message_repository import PostgresMessageRepository
 from bot.infrastructure.db.postgres_mute_repository import PostgresMuteRepository
+from bot.infrastructure.db.postgres_mute_protection_repository import PostgresMuteProtectionRepository
 from bot.infrastructure.db.postgres_saved_permissions_repository import PostgresSavedPermissionsRepository
 from bot.infrastructure.db.postgres_llm_repository import PostgresLlmRepository
 from bot.infrastructure.db.postgres_giveaway_repository import PostgresGiveawayRepository
@@ -157,6 +159,10 @@ class RequestProvider(Provider):
     @provide
     def get_mute_repo(self, tm: ITransactionManager) -> IMuteRepository:
         return PostgresMuteRepository(tm.get_connection())
+
+    @provide
+    def get_mute_protection_repo(self, tm: ITransactionManager) -> IMuteProtectionRepository:
+        return PostgresMuteProtectionRepository(tm.get_connection())
 
     @provide
     def get_saved_perms_repo(self, tm: ITransactionManager) -> ISavedPermissionsRepository:

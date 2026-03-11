@@ -26,6 +26,8 @@ SPECIAL_EMOJI = {
     "sub": "➖",
     "mute": "🔇",
     "tag": "🏷",
+    "transfer": "💸",
+    "protect": "🛡",
 }
 
 
@@ -35,6 +37,15 @@ class SpendResult:
     cost: int = 0
     new_balance: int = 0
     current_balance: int = 0  # для сообщения об ошибке «у вас N баллов»
+
+
+@dataclass(slots=True)
+class TransferResult:
+    success: bool
+    amount: int = 0
+    sender_balance: int = 0    # баланс отправителя после перевода
+    receiver_balance: int = 0  # баланс получателя после перевода
+    current_balance: int = 0   # текущий баланс при ошибке «недостаточно»
 
 
 class ScoreService:
@@ -254,6 +265,45 @@ class ScoreService:
         )
 
         return SpendResult(success=True, cost=cost, new_balance=new_balance)
+
+    async def transfer_score(
+        self,
+        sender_id: int,
+        receiver_id: int,
+        chat_id: int,
+        amount: int,
+    ) -> TransferResult:
+        """Перевод баллов от sender к receiver.
+
+        Правила:
+        - amount должен быть > 0
+        - у sender должно быть >= amount баллов (в долг не переводим)
+        - отрицательный перевод запрещён
+        """
+        if amount <= 0:
+            score = await self._score_repo.get(sender_id, chat_id)
+            balance = score.value if score else 0
+            return TransferResult(success=False, amount=amount, current_balance=balance)
+
+        score = await self._score_repo.get(sender_id, chat_id)
+        balance = score.value if score else 0
+
+        if balance < amount:
+            return TransferResult(success=False, amount=amount, current_balance=balance)
+
+        sender_new = await self._score_repo.add_delta(sender_id, chat_id, -amount)
+        receiver_new = await self._score_repo.add_delta(receiver_id, chat_id, amount)
+
+        # Записываем два события в историю: списание у отправителя и зачисление получателю
+        await self._save_special_event(sender_id, receiver_id, chat_id, -amount, SPECIAL_EMOJI["transfer"])
+        await self._save_special_event(sender_id, receiver_id, chat_id, +amount, SPECIAL_EMOJI["transfer"])
+
+        return TransferResult(
+            success=True,
+            amount=amount,
+            sender_balance=sender_new,
+            receiver_balance=receiver_new,
+        )
 
     async def _save_special_event(
         self,

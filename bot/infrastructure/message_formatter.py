@@ -4,16 +4,16 @@ from bot.domain.pluralizer import ScorePluralizer
 
 
 def user_link(username: str | None, full_name: str, user_id: int) -> str:
-    """Кликабельная ссылка на пользователя без тега (HTML parse mode).
+    """Отображение пользователя без кликабельных t.me-ссылок (чтобы не засорять историю).
 
-    С username:  <a href="https://t.me/username">username</a>
-    Без username: <a href="tg://user?id=123">Full Name</a>
+    С username:  <code>@username</code>  — копируется, но не упоминает
+    Без username: plain full_name (или user_id как fallback)
     """
     if username:
         safe = escape(username)
-        return f'<a href="https://t.me/{safe}">{safe}</a>'
+        return f"<code>@{safe}</code>"
     safe = escape(full_name) or str(user_id)
-    return f'<a href="tg://user?id={user_id}">{safe}</a>'
+    return safe
 
 
 class MessageFormatter:
