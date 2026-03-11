@@ -26,28 +26,26 @@ from bot.application.blackjack_service import (
 from bot.application.score_service import ScoreService
 from bot.infrastructure.config_loader import AppConfig
 from bot.infrastructure.message_formatter import MessageFormatter
-from bot.presentation.utils import schedule_delete
+from bot.presentation.utils import schedule_delete, NO_PREVIEW
 
 logger = logging.getLogger(__name__)
 
 router = Router(name="blackjack")
-NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 
 # Активные раунды: (user_id, chat_id) -> BlackjackRound
 _active_games: dict[tuple[int, int], BlackjackRound] = {}
 
-# Sliding window: (user_id, chat_id) -> deque of game start timestamps
-_BJ_WINDOW_HOURS = 1
-_BJ_MAX_GAMES = 5
+# Лимиты игр берутся из config.blackjack (max_games_per_window, window_hours)
 _bj_history: dict[tuple[int, int], deque] = {}
 
 
-def _check_bj_limit(user_id: int, chat_id: int) -> timedelta | None:
+def _check_bj_limit(user_id: int, chat_id: int, max_games: int = 5, window_hours: int = 1) -> timedelta | None:
     """Sliding window: возвращает None если можно играть,
     или timedelta до освобождения слота если лимит исчерпан."""
     key = (user_id, chat_id)
     now = datetime.now()
-    window = timedelta(hours=_BJ_WINDOW_HOURS)
+    # NOTE: лимиты читаются из конфига в cmd_bj и передаются сюда
+    window = timedelta(hours=window_hours)
     dq = _bj_history.setdefault(key, deque())
 
     # Выкидываем устаревшие записи
@@ -188,7 +186,7 @@ async def cmd_blackjack(
         return
 
     # Sliding window: 5 игр в час
-    wait = _check_bj_limit(user_id, chat_id)
+    wait = _check_bj_limit(user_id, chat_id, config.blackjack.max_games_per_window, config.blackjack.window_hours)
     if wait is not None:
         total = int(wait.total_seconds())
         mins, secs = divmod(total, 60)

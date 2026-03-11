@@ -21,6 +21,7 @@ from bot.domain.entities import User
 from bot.domain.giveaway_entities import Giveaway
 from bot.domain.pluralizer import ScorePluralizer
 from bot.infrastructure.config_loader import AppConfig
+from bot.domain.bot_utils import is_admin
 
 router = Router(name="giveaway")
 
@@ -37,10 +38,7 @@ def _parse_duration(token: str) -> timedelta | None:
     return timedelta(minutes=value) if unit == "m" else timedelta(hours=value)
 
 
-def _is_admin(username: str | None, config: AppConfig) -> bool:
-    if not username:
-        return False
-    return username.lstrip("@").lower() in config.admin.users
+# is_admin imported from bot.domain.bot_utils
 
 
 def _join_kb(giveaway_id: int, count: int) -> InlineKeyboardMarkup:
@@ -82,7 +80,7 @@ async def cmd_giveaway(
     config: FromDishka[AppConfig],
     pluralizer: FromDishka[ScorePluralizer],
 ) -> None:
-    if not _is_admin(message.from_user and message.from_user.username, config):
+    if not is_admin(message.from_user and message.from_user.username, config.admin.users):
         await message.answer("⛔ Только администраторы могут создавать розыгрыши.")
         return
 
@@ -140,7 +138,7 @@ async def cmd_giveaway_end(
     config: FromDishka[AppConfig],
     pluralizer: FromDishka[ScorePluralizer],
 ) -> None:
-    if not _is_admin(message.from_user and message.from_user.username, config):
+    if not is_admin(message.from_user and message.from_user.username, config.admin.users):
         await message.answer("⛔ Только администраторы могут завершать розыгрыши.")
         return
 

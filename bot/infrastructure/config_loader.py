@@ -6,6 +6,9 @@ from pathlib import Path
 import yaml
 from pydantic_settings import BaseSettings
 
+# Папка с конфигами относительно корня проекта
+_CONFIGS_DIR = Path("configs")
+
 
 class Settings(BaseSettings):
     bot_token: str = ""
@@ -34,6 +37,7 @@ class LimitsConfig:
 @dataclass
 class HistoryConfig:
     retention_days: int = 7
+    page_size: int = 30
 
 
 @dataclass
@@ -42,15 +46,14 @@ class AdminConfig:
     users: list[str] = field(default_factory=list)
 
     def cmd(self, action: str) -> str:
-        """Возвращает имя команды: prefix_action (например 'coffee_add')."""
         return f"{self.prefix}_{action}"
 
 
 @dataclass
 class AutoReactConfig:
     enabled: bool = False
-    probability: float = 0.05     # вероятность реакции на каждое сообщение (0.0–1.0)
-    positive_only: bool = True    # только реакции с weight > 0
+    probability: float = 0.05
+    positive_only: bool = True
 
 
 @dataclass
@@ -60,10 +63,9 @@ class MuteConfig:
     max_minutes: int = 120
     selfmute_min_minutes: int = 1
     selfmute_max_minutes: int = 1440
-    # Стоимость защиты от мута на сутки
     protection_cost: int = 200
-    # Длительность защиты в часах
     protection_duration_hours: int = 24
+
 
 @dataclass
 class TagConfig:
@@ -78,6 +80,17 @@ class TagConfig:
 class BlackjackConfig:
     min_bet: int = 1
     max_bet: int = 500
+    max_games_per_window: int = 5
+    window_hours: int = 1
+
+
+@dataclass
+class SystemConfig:
+    """Системные интервалы и технические параметры."""
+    cleanup_interval_hours: int = 6
+    unmute_check_interval_seconds: int = 60
+    auto_delete_seconds: int = 120
+    history_page_size: int = 30
 
 
 @dataclass
@@ -130,43 +143,47 @@ class AppConfig:
     tag: TagConfig = field(default_factory=TagConfig)
     blackjack: BlackjackConfig = field(default_factory=BlackjackConfig)
     llm: LlmConfig = field(default_factory=LlmConfig)
+    system: SystemConfig = field(default_factory=SystemConfig)
 
 
-def load_config(path: str | Path = "config.yaml") -> AppConfig:
+def load_config(path: str | Path | None = None) -> AppConfig:
+    if path is None:
+        path = _CONFIGS_DIR / "config.yaml"
     with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(f)
 
-    score_raw = raw.get("score", {})
-    limits_raw = raw.get("limits", {})
-    history_raw = raw.get("history", {})
+    users = [u.lstrip("@").lower() for u in raw.get("admin", {}).get("users", [])]
     admin_raw = raw.get("admin", {})
-    mute_raw = raw.get("mute", {})
-    auto_react_raw = raw.get("auto_react", {})
-    tag_raw = raw.get("tag", {})
+    history_raw = raw.get("history", {})
     blackjack_raw = raw.get("blackjack", {})
-    llm_raw = raw.get("llm", {})
-
-    # Нормализуем username: убираем @ если есть, приводим к lower
-    users = [u.lstrip("@").lower() for u in admin_raw.get("users", [])]
+    system_raw = raw.get("system", {})
 
     return AppConfig(
-        score=ScoreConfig(**score_raw),
+        score=ScoreConfig(**raw.get("score", {})),
         reactions=raw.get("reactions", {}),
         self_reaction_allowed=raw.get("self_reaction_allowed", False),
-        limits=LimitsConfig(**limits_raw),
+        limits=LimitsConfig(**raw.get("limits", {})),
         history=HistoryConfig(**history_raw),
-        admin=AdminConfig(
-            prefix=admin_raw.get("prefix", "admin"),
-            users=users,
-        ),
-        mute=MuteConfig(**mute_raw),
-        auto_react=AutoReactConfig(**auto_react_raw),
-        tag=TagConfig(**tag_raw),
+        admin=AdminConfig(prefix=admin_raw.get("prefix", "admin"), users=users),
+        mute=MuteConfig(**raw.get("mute", {})),
+        auto_react=AutoReactConfig(**raw.get("auto_react", {})),
+        tag=TagConfig(**raw.get("tag", {})),
         blackjack=BlackjackConfig(**blackjack_raw),
-        llm=LlmConfig(**llm_raw),
+        llm=LlmConfig(**raw.get("llm", {})),
+        system=SystemConfig(**system_raw),
     )
 
 
-def load_messages(path: str | Path = "messages.yaml") -> dict[str, str]:
+def load_messages(path: str | Path | None = None) -> dict[str, str]:
+    if path is None:
+        path = _CONFIGS_DIR / "messages.yaml"
+    with open(path, encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def load_help_config(path: str | Path | None = None) -> dict:
+    """Загружает configs/help.yaml — тексты и структуру /help меню."""
+    if path is None:
+        path = _CONFIGS_DIR / "help.yaml"
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)

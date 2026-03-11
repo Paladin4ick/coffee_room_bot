@@ -13,11 +13,10 @@ from dishka.integrations.aiogram import FromDishka, inject
 from bot.application.slots_service import SlotsService, SlotsConfig, SpinOutcome
 from bot.infrastructure.config_loader import AppConfig
 from bot.infrastructure.message_formatter import MessageFormatter
-from bot.presentation.utils import schedule_delete
+from bot.presentation.utils import schedule_delete, NO_PREVIEW
 
 logger = logging.getLogger(__name__)
 router = Router(name="slots")
-NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 
 
 def _render_reels(reels: list[str]) -> str:

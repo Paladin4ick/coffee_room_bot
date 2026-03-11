@@ -50,8 +50,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://scorebot:scorebot@db:5432/scorebot
       OPENSERP_URL: http://openserp:7000
     volumes:
-      - ./config.yaml:/app/config.yaml:ro,z
-      - ./messages.yaml:/app/messages.yaml:ro,z
+      - ./configs:/app/configs:ro,z
 
  
 volumes:

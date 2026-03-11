@@ -12,23 +12,23 @@ from bot.application.interfaces.daily_limits_repository import IDailyLimitsRepos
 from bot.application.interfaces.user_repository import IUserRepository
 from bot.application.interfaces.message_repository import IMessageRepository
 from bot.application.interfaces.mute_repository import IMuteRepository
-from bot.application.interfaces.mute_protection_repository import IMuteProtectionRepository
 from bot.application.interfaces.saved_permissions_repository import ISavedPermissionsRepository
+from bot.application.interfaces.mute_protection_repository import IMuteProtectionRepository
+from bot.application.interfaces.giveaway_repository import IGiveawayRepository
 from bot.application.interfaces.llm_repository import ILlmRepository
 from bot.application.interfaces.transaction_manager import ITransactionManager
-from bot.application.interfaces.giveaway_repository import IGiveawayRepository
 from bot.application.score_service import ScoreService
 from bot.application.leaderboard_service import LeaderboardService
 from bot.application.history_service import HistoryService
 from bot.application.cleanup_service import CleanupService
 from bot.application.mute_service import MuteService
-from bot.application.llm_service import LlmService
 from bot.application.giveaway_service import GiveawayService
+from bot.application.slots_service import SlotsService, SlotsConfig
+from bot.application.llm_service import LlmService
 
-from bot.infrastructure.config_loader import AppConfig, Settings, load_config, load_messages
+from bot.infrastructure.config_loader import AppConfig, Settings, load_config, load_messages, load_help_config
 from bot.infrastructure.message_formatter import MessageFormatter
-from bot.infrastructure.aitunnel_client import AiTunnelClient
-from bot.infrastructure.search_engine import SearchEngine
+from bot.infrastructure.aitunnel_client import AitunnelClient
 from bot.infrastructure.db.transaction_manager import PostgresTransactionManager
 from bot.infrastructure.db.postgres_score_repository import PostgresScoreRepository
 from bot.infrastructure.db.postgres_event_repository import PostgresEventRepository
@@ -36,12 +36,12 @@ from bot.infrastructure.db.postgres_daily_limits_repository import PostgresDaily
 from bot.infrastructure.db.postgres_user_repository import PostgresUserRepository
 from bot.infrastructure.db.postgres_message_repository import PostgresMessageRepository
 from bot.infrastructure.db.postgres_mute_repository import PostgresMuteRepository
-from bot.infrastructure.db.postgres_mute_protection_repository import PostgresMuteProtectionRepository
 from bot.infrastructure.db.postgres_saved_permissions_repository import PostgresSavedPermissionsRepository
-from bot.infrastructure.db.postgres_llm_repository import PostgresLlmRepository
+from bot.infrastructure.db.postgres_mute_protection_repository import PostgresMuteProtectionRepository
 from bot.infrastructure.db.postgres_giveaway_repository import PostgresGiveawayRepository
-from bot.application.slots_service import SlotsConfig, SlotsMachine, SlotsService
-from bot.application.slots_custom_functions import apply_custom_functions
+from bot.infrastructure.db.postgres_llm_repository import PostgresLlmRepository
+
+from bot.presentation.handlers.help_renderer import HelpRenderer
 
 
 class AppProvider(Provider):
@@ -69,34 +69,12 @@ class AppProvider(Provider):
         return MessageFormatter(templates, pluralizer)
 
     @provide
-    def get_pluralizer(self, config: AppConfig) -> ScorePluralizer:
-        return ScorePluralizer(
-            singular=config.score.singular,
-            plural_few=config.score.plural_few,
-            plural_many=config.score.plural_many,
-            icon=config.score.icon,
-        )
-
-    @provide
     def get_reaction_registry(self, config: AppConfig) -> ReactionRegistry:
         return ReactionRegistry(config.reactions)
 
     @provide
-    def get_search_engine(self, settings: Settings) -> SearchEngine:
-        return SearchEngine(base_url=settings.openserp_url)
-
-    @provide
-    async def get_aitunnel_client(
-        self, settings: Settings, config: AppConfig,
-    ) -> AsyncIterable[AiTunnelClient]:
-        client = AiTunnelClient(
-            api_key=settings.aitunnel_api_key,
-            base_url=config.llm.base_url,
-            model=config.llm.model,
-            max_output_tokens=config.llm.max_output_tokens,
-        )
-        yield client
-        await client.close()
+    def get_help_renderer(self) -> HelpRenderer:
+        return HelpRenderer(load_help_config())
 
     @provide
     async def get_pool(self, settings: Settings) -> AsyncIterable[asyncpg.Pool]:
@@ -105,22 +83,9 @@ class AppProvider(Provider):
         yield pool
         await pool.close()
 
-    @provide
-    def get_slots_config(self, config: AppConfig) -> SlotsConfig:
-        cfg = SlotsConfig(
-            min_bet=config.blackjack.min_bet,
-            max_bet=config.blackjack.max_bet,
-        )
-        apply_custom_functions(cfg)
-        return cfg
-
-    @provide
-    def get_slots_machine(self, cfg: SlotsConfig) -> SlotsMachine:
-        return SlotsMachine(cfg)
-
 
 class RequestProvider(Provider):
-    """Создаются на каждый запрос (хэндлер). Транзакция управляется здесь."""
+    """Создаются на каждый запрос (хэндлер)."""
 
     scope = Scope.REQUEST
 
@@ -160,16 +125,20 @@ class RequestProvider(Provider):
         return PostgresMuteRepository(tm.get_connection())
 
     @provide
-    def get_mute_protection_repo(self, tm: ITransactionManager) -> IMuteProtectionRepository:
-        return PostgresMuteProtectionRepository(tm.get_connection())
-
-    @provide
     def get_saved_perms_repo(self, tm: ITransactionManager) -> ISavedPermissionsRepository:
         return PostgresSavedPermissionsRepository(tm.get_connection())
 
     @provide
+    def get_mute_protection_repo(self, tm: ITransactionManager) -> IMuteProtectionRepository:
+        return PostgresMuteProtectionRepository(tm.get_connection())
+
+    @provide
     def get_giveaway_repo(self, tm: ITransactionManager) -> IGiveawayRepository:
         return PostgresGiveawayRepository(tm.get_connection())
+
+    @provide
+    def get_llm_repo(self, tm: ITransactionManager) -> ILlmRepository:
+        return PostgresLlmRepository(tm.get_connection())
 
     @provide
     def get_score_service(
@@ -210,39 +179,32 @@ class RequestProvider(Provider):
         return MuteService(mute_repo)
 
     @provide
-    def get_slots_service(self, machine: SlotsMachine, cfg: SlotsConfig, score_service: ScoreService) -> SlotsService:
-        return SlotsService(machine, cfg, score_service)
+    def get_giveaway_service(self, repo: IGiveawayRepository) -> GiveawayService:
+        return GiveawayService(repo)
 
     @provide
-    def get_llm_repo(self, tm: ITransactionManager) -> ILlmRepository:
-        return PostgresLlmRepository(tm.get_connection())
+    def get_slots_config(self, config: AppConfig) -> SlotsConfig:
+        return SlotsConfig(
+            min_bet=config.blackjack.min_bet,
+            max_bet=config.blackjack.max_bet,
+        )
+
+    @provide
+    def get_slots_service(self, score_repo: IScoreRepository, config: SlotsConfig) -> SlotsService:
+        return SlotsService(score_repo, config)
+
+    @provide
+    def get_aitunnel_client(self, settings: Settings, config: AppConfig) -> AitunnelClient:
+        return AitunnelClient(
+            api_key=settings.aitunnel_api_key,
+            base_url=config.llm.base_url,
+        )
 
     @provide
     def get_llm_service(
         self,
-        client: AiTunnelClient,
-        search_engine: SearchEngine,
         llm_repo: ILlmRepository,
+        client: AitunnelClient,
         config: AppConfig,
     ) -> LlmService:
-        return LlmService(
-            client=client,
-            search_engine=search_engine,
-            llm_repo=llm_repo,
-            system_prompt=config.llm.system_prompt,
-            search_system_prompt=config.llm.search_system_prompt,
-            daily_limit=config.llm.daily_limit_per_user,
-            search_max_results=config.llm.search_max_results,
-            admin_users=config.admin.users,
-        )
-
-    @provide
-    def get_giveaway_service(
-        self,
-        giveaway_repo: IGiveawayRepository,
-        score_repo: IScoreRepository,
-    ) -> GiveawayService:
-        return GiveawayService(
-            giveaway_repo=giveaway_repo,
-            score_repo=score_repo,
-        )
+        return LlmService(llm_repo, client, config.llm)

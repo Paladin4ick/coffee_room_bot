@@ -46,9 +46,10 @@ Transactions are managed exclusively in `RequestProvider.get_tx_manager()` — b
 
 ### Configuration
 
-- `config.yaml` — reactions with weights, score pluralization, daily limits, admin settings, mute/tag costs. Adding a new reaction = edit YAML + restart.
-- `messages.yaml` — all user-facing text templates (Russian). Separated from code for easy localization.
-- `.env` — secrets only: `BOT_TOKEN`, `DATABASE_URL`.
+- `configs/config.yaml` — reactions, score pluralization, daily limits, admin, mute/tag costs, blackjack rate-limiting, system intervals. Adding a new reaction = edit YAML + restart.
+- `configs/messages.yaml` — all user-facing text templates (Russian).
+- `configs/help.yaml` — /help menu structure and section texts (buttons, labels, content). Edit without touching Python.
+- `.env` — secrets only: `BOT_TOKEN`, `DATABASE_URL`. Stays in project root.
 
 ### Database
 
@@ -63,4 +64,4 @@ Two async loops in `main.py`: cleanup of expired events (every 6h) and unmute ch
 - Language: Python 3.12+, async throughout
 - Package manager: uv
 - All user-facing strings live in `messages.yaml`, not in code
-- Admin commands use a configurable prefix from `config.yaml` (e.g., `/coffee_add`, `/coffee_mute`)
+- Admin commands use a configurable prefix from `configs/config.yaml`
