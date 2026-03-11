@@ -35,6 +35,8 @@ mute:
   cost_per_minute: 20           # стоимость 1 минуты мута в баллах
   min_minutes: 1
   max_minutes: 120
+  selfmute_min_minutes: 1       # лимиты /selfmute
+  selfmute_max_minutes: 1440    # 24 часа
 
 tag:
   cost_self: 50                 # сменить тег себе
@@ -53,3 +55,5 @@ llm:
   max_output_tokens: 2048       # лимит токенов на ответ
   daily_limit_per_user: 4       # запросов /llm + /search на пользователя в сутки
   search_max_results: 7         # сколько результатов поиска парсить
+
+
