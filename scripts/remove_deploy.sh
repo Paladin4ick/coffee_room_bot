@@ -1,0 +1,1 @@
+crontab -l | grep -v "deploy.sh" | crontab -

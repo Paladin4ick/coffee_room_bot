@@ -103,7 +103,7 @@ class ScoreService:
             return ApplyResult(applied=False, reason=IgnoreReason.DUPLICATE)
 
         # 7. Дневной лимит реакций актора
-        today = date.today()
+        today = datetime.now(TZ_MSK).date()
         actor_limits = await self._limits_repo.get(actor_id, chat_id, today)
         if actor_limits.reactions_given >= self._daily_reactions_given:
             return ApplyResult(applied=False, reason=IgnoreReason.DAILY_REACTIONS_LIMIT)

@@ -631,7 +631,7 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
         except Exception:
             await message.reply(formatter._t["op_failed"])
             return
-        if isinstance(member, ChatMemberOwner):
+        if isinstance(member, ChatMemberOwner) or isinstance(member, ChatMemberAdministrator):
             await message.reply(
                 formatter._t["op_already"].format(user=display),
                 parse_mode=ParseMode.HTML,

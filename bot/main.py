@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 
 from aiogram import Bot, Dispatcher
 from dishka import make_async_container
@@ -95,6 +96,10 @@ async def main() -> None:
 
     logger.info("Bot starting…")
     try:
+        DEBUG_ENV = os.getenv("SPECIAL__DEBUG_ENV")
+        if DEBUG_ENV is not None and DEBUG_ENV == "TRUE":
+            logging.critical("RUNNING WITH DEBUG ENV")
+            await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         cleanup_task.cancel()
