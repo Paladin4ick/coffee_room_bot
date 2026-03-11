@@ -60,10 +60,10 @@ class MuteConfig:
     max_minutes: int = 120
     selfmute_min_minutes: int = 1
     selfmute_max_minutes: int = 1440
-    # Стоимость 1 минуты защиты от мута (баллов/мин)
-    protection_cost_per_minute: int = 10
-    # Максимум минут защиты за одно использование /protect
-    protection_max_minutes: int = 60
+    # Стоимость защиты от мута на сутки
+    protection_cost: int = 200
+    # Длительность защиты в часах
+    protection_duration_hours: int = 24
 
 @dataclass
 class TagConfig:

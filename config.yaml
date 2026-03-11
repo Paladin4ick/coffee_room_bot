@@ -31,14 +31,15 @@ admin:
     - "ju57_4_cu63"
     - "meganjard"
 
+
 mute:
   cost_per_minute: 20               # стоимость 1 минуты мута в баллах
   min_minutes: 1
   max_minutes: 120
   selfmute_min_minutes: 1           # лимиты /selfmute
   selfmute_max_minutes: 1440        # 24 часа
-  protection_cost_per_minute: 10    # стоимость 1 минуты защиты от мута (/protect)
-  protection_max_minutes: 60        # максимум минут защиты за одно использование /protect
+  protection_cost: 200            # баллов за одно использование /protect
+  protection_duration_hours: 24   # сколько часов даёт /protect
 
 tag:
   cost_self: 50                 # сменить тег себе
