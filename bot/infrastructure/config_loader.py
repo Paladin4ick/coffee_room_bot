@@ -58,7 +58,8 @@ class MuteConfig:
     cost_per_minute: int = 20
     min_minutes: int = 1
     max_minutes: int = 120
-
+    selfmute_min_minutes: int = 1
+    selfmute_max_minutes: int = 1440
 
 @dataclass
 class TagConfig:
