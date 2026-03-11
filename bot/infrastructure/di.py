@@ -15,12 +15,14 @@ from bot.application.interfaces.mute_repository import IMuteRepository
 from bot.application.interfaces.saved_permissions_repository import ISavedPermissionsRepository
 from bot.application.interfaces.llm_repository import ILlmRepository
 from bot.application.interfaces.transaction_manager import ITransactionManager
+from bot.application.interfaces.giveaway_repository import IGiveawayRepository
 from bot.application.score_service import ScoreService
 from bot.application.leaderboard_service import LeaderboardService
 from bot.application.history_service import HistoryService
 from bot.application.cleanup_service import CleanupService
 from bot.application.mute_service import MuteService
 from bot.application.llm_service import LlmService
+from bot.application.giveaway_service import GiveawayService
 
 from bot.infrastructure.config_loader import AppConfig, Settings, load_config, load_messages
 from bot.infrastructure.message_formatter import MessageFormatter
@@ -34,9 +36,10 @@ from bot.infrastructure.db.postgres_user_repository import PostgresUserRepositor
 from bot.infrastructure.db.postgres_message_repository import PostgresMessageRepository
 from bot.infrastructure.db.postgres_mute_repository import PostgresMuteRepository
 from bot.infrastructure.db.postgres_saved_permissions_repository import PostgresSavedPermissionsRepository
+from bot.infrastructure.db.postgres_llm_repository import PostgresLlmRepository
+from bot.infrastructure.db.postgres_giveaway_repository import PostgresGiveawayRepository
 from bot.application.slots_service import SlotsConfig, SlotsMachine, SlotsService
 from bot.application.slots_custom_functions import apply_custom_functions
-from bot.infrastructure.db.postgres_llm_repository import PostgresLlmRepository
 
 
 class AppProvider(Provider):
@@ -62,6 +65,15 @@ class AppProvider(Provider):
             icon=config.score.icon,
         )
         return MessageFormatter(templates, pluralizer)
+
+    @provide
+    def get_pluralizer(self, config: AppConfig) -> ScorePluralizer:
+        return ScorePluralizer(
+            singular=config.score.singular,
+            plural_few=config.score.plural_few,
+            plural_many=config.score.plural_many,
+            icon=config.score.icon,
+        )
 
     @provide
     def get_reaction_registry(self, config: AppConfig) -> ReactionRegistry:
@@ -94,18 +106,16 @@ class AppProvider(Provider):
     @provide
     def get_slots_config(self, config: AppConfig) -> SlotsConfig:
         cfg = SlotsConfig(
-            min_bet=config.blackjack.min_bet,  # или свои настройки
+            min_bet=config.blackjack.min_bet,
             max_bet=config.blackjack.max_bet,
             rtp_bias=0.95,
         )
-        apply_custom_functions(cfg)  # подключаем кастомные функции
+        apply_custom_functions(cfg)
         return cfg
 
     @provide
     def get_slots_machine(self, cfg: SlotsConfig) -> SlotsMachine:
         return SlotsMachine(cfg)
-
-
 
 
 class RequestProvider(Provider):
@@ -153,6 +163,10 @@ class RequestProvider(Provider):
         return PostgresSavedPermissionsRepository(tm.get_connection())
 
     @provide
+    def get_giveaway_repo(self, tm: ITransactionManager) -> IGiveawayRepository:
+        return PostgresGiveawayRepository(tm.get_connection())
+
+    @provide
     def get_score_service(
         self,
         score_repo: IScoreRepository,
@@ -190,7 +204,6 @@ class RequestProvider(Provider):
     def get_mute_service(self, mute_repo: IMuteRepository) -> MuteService:
         return MuteService(mute_repo)
 
-    # в RequestProvider:
     @provide
     def get_slots_service(self, machine: SlotsMachine, cfg: SlotsConfig, score_service: ScoreService) -> SlotsService:
         return SlotsService(machine, cfg, score_service)
@@ -216,4 +229,15 @@ class RequestProvider(Provider):
             daily_limit=config.llm.daily_limit_per_user,
             search_max_results=config.llm.search_max_results,
             admin_users=config.admin.users,
+        )
+
+    @provide
+    def get_giveaway_service(
+        self,
+        giveaway_repo: IGiveawayRepository,
+        score_repo: IScoreRepository,
+    ) -> GiveawayService:
+        return GiveawayService(
+            giveaway_repo=giveaway_repo,
+            score_repo=score_repo,
         )

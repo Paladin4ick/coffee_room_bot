@@ -1,8 +1,3 @@
-"""Фрагмент для вставки в main.py — фоновая задача завершения розыгрышей.
-
-Вставь это рядом с существующими background tasks (cleanup, unmute).
-"""
-
 import asyncio
 import logging
 from datetime import datetime
@@ -12,10 +7,7 @@ from aiogram import Bot
 logger = logging.getLogger(__name__)
 
 
-# В функции main() добавь вызов:
-#   asyncio.create_task(giveaway_loop(bot, container))
-
-async def giveaway_loop(bot: Bot, container) -> None:  # type: ignore[type-arg]
+async def giveaway_loop(bot: Bot, container) -> None:
     """Каждые 60 секунд проверяет и завершает просроченные розыгрыши."""
     from bot.application.giveaway_service import GiveawayService
     from bot.domain.pluralizer import ScorePluralizer

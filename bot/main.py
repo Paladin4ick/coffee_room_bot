@@ -14,6 +14,7 @@ from bot.presentation.handlers.commands import router as commands_router
 from bot.presentation.handlers.blackjack import router as blackjack_router
 from bot.presentation.handlers.slots import router as slots_router
 from bot.presentation.handlers.llm_commands import router as llm_router
+from bot.presentation.handlers.giveaway import router as giveaway_router
 from bot.presentation.handlers.admin_commands import create_admin_router, _unmute_user
 
 from bot.presentation.middlewares.chat_context import ChatContextMiddleware
@@ -82,6 +83,7 @@ async def main() -> None:
     dp.include_router(llm_router)
     dp.include_router(reactions_router)
     dp.include_router(slots_router)
+    dp.include_router(giveaway_router)
 
     # Команды бота (без префикса)
     admin_router = create_admin_router(config.admin.prefix)
@@ -98,7 +100,6 @@ async def main() -> None:
 
     cleanup_task = asyncio.create_task(cleanup_loop(container))
     unmute_task = asyncio.create_task(unmute_loop(container, bot))
-
     asyncio.create_task(giveaway_loop(bot, container))
 
     logger.info("Bot starting…")
