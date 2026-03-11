@@ -7,6 +7,8 @@ Telegram-бот на базе **aiogram 3**, реализующий систем
 ## Deploy
 p.s. лучше всего деплоить так
 ```sh
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/gh_key
 sudo SSH_AUTH_SOCK=$SSH_AUTH_SOCK ./scripts/deploy.sh --force
 ```
 
