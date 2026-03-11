@@ -19,6 +19,7 @@ from bot.application.interfaces.user_repository import IUserRepository
 from bot.infrastructure.config_loader import AppConfig
 from bot.infrastructure.message_formatter import MessageFormatter, user_link
 from bot.domain.tz import to_msk
+from cachetools import TTLCache
 
 router = Router(name="commands")
 
@@ -100,6 +101,7 @@ async def cmd_top(
 
 
 # Хранилище страниц истории: (chat_id, user_id) -> list[list[dict]]
+_history_pages: TTLCache = TTLCache(maxsize=500, ttl=600)
 _history_pages: dict[tuple[int, int], list[list[dict]]] = {}
 
 HISTORY_PAGE_SIZE = 30  # строк на страницу

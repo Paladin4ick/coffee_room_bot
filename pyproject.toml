@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "aiogram>=3.26.0",
     "asyncpg>=0.31.0",
+    "cachetools>=7.0.5",
     "dishka>=1.9.1",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.13.1",
