@@ -62,14 +62,17 @@ class AppProvider(Provider):
         return load_config()
 
     @provide
-    def get_messages(self, config: AppConfig) -> MessageFormatter:
-        templates = load_messages()
-        pluralizer = ScorePluralizer(
+    def get_score_pluralizer(self, config: AppConfig) -> ScorePluralizer:
+        return ScorePluralizer(
             singular=config.score.singular,
             plural_few=config.score.plural_few,
             plural_many=config.score.plural_many,
             icon=config.score.icon,
         )
+
+    @provide
+    def get_messages(self, config: AppConfig, pluralizer: ScorePluralizer) -> MessageFormatter:
+        templates = load_messages()
         return MessageFormatter(templates, pluralizer)
 
     @provide

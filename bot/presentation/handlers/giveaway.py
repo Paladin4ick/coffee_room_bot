@@ -11,6 +11,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import (
     CallbackQuery,
+    ChatMemberAdministrator,
     ChatPermissions,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -407,27 +408,55 @@ async def cmd_mute_roulette_end(
 async def _finish_mute_roulette(
     bot: Bot, chat_id: int, data: dict, mute_service: MuteService,
 ) -> None:
-    """Завершение мут-рулетки: выбор проигравших и применение мутов."""
+    """Завершение мут-гивэвея: выбор проигравших и применение мутов."""
     participants = data["participants"]
     losers_count = data["losers_count"]
     mute_minutes = data["mute_minutes"]
+    creator_id = data["creator_id"]
 
     if not participants:
-        await bot.send_message(chat_id, "🎰 Мут-рулетка завершена, но никто не участвовал.")
+        await bot.send_message(chat_id, "🎰 Мут-гивэвей завершён, но никто не участвовал.")
         return
 
     losers = random.sample(participants, min(losers_count, len(participants)))
     until = datetime.now(TZ_MSK) + timedelta(minutes=mute_minutes)
 
-    lines = [f"🎰 <b>Мут-рулетка завершена!</b> Участников: {len(participants)}\n"]
+    _ADMIN_PERM_FIELDS = (
+        "can_manage_chat", "can_change_info", "can_delete_messages",
+        "can_invite_users", "can_restrict_members", "can_pin_messages",
+        "can_manage_video_chats", "can_promote_members", "can_post_messages",
+        "can_edit_messages", "can_post_stories", "can_edit_stories",
+        "can_delete_stories", "can_manage_topics",
+    )
+
+    lines = [f"🎰 <b>Мут-гивэвей завершён!</b> Участников: {len(participants)}\n"]
     for user_id in losers:
         try:
             member = await bot.get_chat_member(chat_id, user_id)
             name = f'<a href="tg://user?id={user_id}">{member.user.full_name}</a>'
         except Exception:
             name = f"<code>{user_id}</code>"
+            member = None
+
+        # Проверяем, является ли участник администратором
+        was_admin = isinstance(member, ChatMemberAdministrator)
+        admin_perms: dict | None = None
+        if was_admin:
+            admin_perms = {f: getattr(member, f, False) or False for f in _ADMIN_PERM_FIELDS}
+            if member.custom_title:
+                admin_perms["custom_title"] = member.custom_title
 
         try:
+            # Если админ — сначала снимаем права, потом мутим
+            if was_admin:
+                demote_kw = {f: False for f in _ADMIN_PERM_FIELDS}
+                try:
+                    await bot.promote_chat_member(chat_id=chat_id, user_id=user_id, **demote_kw)
+                except TelegramBadRequest:
+                    # Не удалось снять права — значит owner или выше наших прав
+                    lines.append(f"🛡️ {name} — администратор, мут невозможен")
+                    continue
+
             await bot.restrict_chat_member(
                 chat_id=chat_id,
                 user_id=user_id,
@@ -437,8 +466,10 @@ async def _finish_mute_roulette(
             await mute_service.save_mute(MuteEntry(
                 user_id=user_id,
                 chat_id=chat_id,
-                muted_by=data["creator_id"],
+                muted_by=creator_id,
                 until_at=until,
+                was_admin=was_admin,
+                admin_permissions=admin_perms,
             ))
             lines.append(f"🔇 {name} — мут {mute_minutes} мин")
         except TelegramBadRequest as e:
