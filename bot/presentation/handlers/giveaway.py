@@ -51,13 +51,13 @@ def _parse_duration(token: str) -> timedelta | None:
 # is_admin imported from bot.domain.bot_utils
 
 
-def _join_kb(chat_id: int, roulette_id: str, count: int) -> InlineKeyboardMarkup:
+def _join_kb(giveaway_id: int, count: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text=f"🎟 Участвовать ({count})",
-                    callback_data=f"giveaway:join:{chat_id}",
+                    callback_data=f"giveaway:join:{giveaway_id}",
                 )
             ]
         ]
