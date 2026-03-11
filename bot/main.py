@@ -11,6 +11,7 @@ from bot.infrastructure.di import AppProvider, RequestProvider
 from bot.presentation.handlers.reactions import router as reactions_router
 from bot.presentation.handlers.commands import router as commands_router
 from bot.presentation.handlers.blackjack import router as blackjack_router
+from bot.presentation.handlers.slots import router as slots_router
 from bot.presentation.handlers.admin_commands import create_admin_router, _unmute_user
 
 from bot.presentation.middlewares.chat_context import ChatContextMiddleware
@@ -77,6 +78,7 @@ async def main() -> None:
     dp.include_router(commands_router)
     dp.include_router(blackjack_router)
     dp.include_router(reactions_router)
+    dp.include_router(slots_router)
 
     # Команды бота (без префикса)
     admin_router = create_admin_router(config.admin.prefix)

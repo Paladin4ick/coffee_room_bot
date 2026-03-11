@@ -30,6 +30,8 @@ from bot.infrastructure.db.postgres_user_repository import PostgresUserRepositor
 from bot.infrastructure.db.postgres_message_repository import PostgresMessageRepository
 from bot.infrastructure.db.postgres_mute_repository import PostgresMuteRepository
 from bot.infrastructure.db.postgres_saved_permissions_repository import PostgresSavedPermissionsRepository
+from bot.application.slots_service import SlotsConfig, SlotsMachine, SlotsService
+from bot.application.slots_custom_functions import apply_custom_functions
 
 
 class AppProvider(Provider):
@@ -66,6 +68,22 @@ class AppProvider(Provider):
         pool = await asyncpg.create_pool(dsn=dsn, min_size=2, max_size=10)
         yield pool
         await pool.close()
+
+    @provide
+    def get_slots_config(self, config: AppConfig) -> SlotsConfig:
+        cfg = SlotsConfig(
+            min_bet=config.blackjack.min_bet,  # или свои настройки
+            max_bet=config.blackjack.max_bet,
+            rtp_bias=0.95,
+        )
+        apply_custom_functions(cfg)  # подключаем кастомные функции
+        return cfg
+
+    @provide
+    def get_slots_machine(self, cfg: SlotsConfig) -> SlotsMachine:
+        return SlotsMachine(cfg)
+
+
 
 
 class RequestProvider(Provider):
@@ -149,3 +167,8 @@ class RequestProvider(Provider):
     @provide
     def get_mute_service(self, mute_repo: IMuteRepository) -> MuteService:
         return MuteService(mute_repo)
+    
+    # в RequestProvider:
+    @provide
+    def get_slots_service(self, machine: SlotsMachine, cfg: SlotsConfig, score_service: ScoreService) -> SlotsService:
+        return SlotsService(machine, cfg, score_service)
