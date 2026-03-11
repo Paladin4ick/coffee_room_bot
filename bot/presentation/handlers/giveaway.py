@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta
 
+from bot.domain.tz import TZ_MSK
+
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
 from aiogram.types import (
@@ -95,7 +97,7 @@ async def cmd_giveaway(
     duration = _parse_duration(args[-1])
     if duration is not None:
         args = args[:-1]
-        ends_at = datetime.now().astimezone() + duration
+        ends_at = datetime.now(TZ_MSK) + duration
 
     prizes: list[int] = []
     for token in args:
