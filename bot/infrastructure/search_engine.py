@@ -65,36 +65,10 @@ class SearchEngine:
         return results
 
     async def search(self, query: str, max_results: int = 5) -> list[SearchResult]:
-        """Ищет через Google (основной) и Bing (fallback) параллельно."""
-        google_task = self._query_openserp("google", query, max_results)
-        bing_task = self._query_openserp("bing", query, max_results)
-
-        google_res, bing_res = await asyncio.gather(
-            google_task, bing_task, return_exceptions=True,
-        )
-
-        results: list[SearchResult] = []
-        seen_urls: set[str] = set()
-
-        # Google — основной
-        if not isinstance(google_res, Exception):
-            for r in google_res:
-                if r.url not in seen_urls:
-                    seen_urls.add(r.url)
-                    results.append(r)
-
-        # Bing — дополняет если Google дал мало
-        if not isinstance(bing_res, Exception):
-            for r in bing_res:
-                if r.url not in seen_urls:
-                    seen_urls.add(r.url)
-                    results.append(r)
-
+        """Ищет через Google."""
+        results = await self._query_openserp("google", query, max_results)
         results = results[:max_results]
-        logger.info("OpenSERP search for %r returned %d results (google=%d, bing=%d)",
-                     query, len(results),
-                     0 if isinstance(google_res, Exception) else len(google_res),
-                     0 if isinstance(bing_res, Exception) else len(bing_res))
+        logger.info("OpenSERP search for %r returned %d results", query, len(results))
         return results
 
     # ── Search + Content Extraction ──────────────────────────────────
