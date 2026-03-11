@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from collections import deque
+from datetime import datetime, timedelta
 
 from aiogram import F, Router
 from aiogram.enums import ParseMode
@@ -32,6 +34,35 @@ NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 
 # Активные раунды: (user_id, chat_id) -> BlackjackRound
 _active_games: dict[tuple[int, int], BlackjackRound] = {}
+
+# Sliding window: (user_id, chat_id) -> deque of game start timestamps
+_BJ_WINDOW_HOURS = 1
+_BJ_MAX_GAMES = 5
+_bj_history: dict[tuple[int, int], deque] = {}
+
+
+def _check_bj_limit(user_id: int, chat_id: int) -> timedelta | None:
+    """Sliding window: возвращает None если можно играть,
+    или timedelta до освобождения слота если лимит исчерпан."""
+    key = (user_id, chat_id)
+    now = datetime.now()
+    window = timedelta(hours=_BJ_WINDOW_HOURS)
+    dq = _bj_history.setdefault(key, deque())
+
+    # Выкидываем устаревшие записи
+    while dq and now - dq[0] >= window:
+        dq.popleft()
+
+    if len(dq) < _BJ_MAX_GAMES:
+        return None
+
+    # Ждать до тех пор, пока самая старая запись не выйдет из окна
+    return window - (now - dq[0])
+
+
+def _record_bj_game(user_id: int, chat_id: int) -> None:
+    key = (user_id, chat_id)
+    _bj_history.setdefault(key, deque()).append(datetime.now())
 
 # ── Inline-клавиатура ────────────────────────────────────────────
 
@@ -154,6 +185,17 @@ async def cmd_blackjack(
         await message.reply("У тебя уже есть активная игра. Доиграй текущую!")
         return
 
+    # Sliding window: 5 игр в час
+    wait = _check_bj_limit(user_id, chat_id)
+    if wait is not None:
+        total = int(wait.total_seconds())
+        mins, secs = divmod(total, 60)
+        await message.reply(
+            f"⏳ Лимит: {_BJ_MAX_GAMES} игр в час. "
+            f"Следующая игра через {mins}м {secs}с."
+        )
+        return
+
     # Парсим ставку
     bj_cfg = getattr(config, "blackjack", None)
     min_bet = bj_cfg.min_bet if bj_cfg else 1
@@ -187,7 +229,8 @@ async def cmd_blackjack(
         )
         return
 
-    # Создаём раунд
+    # Записываем игру в sliding window и создаём раунд
+    _record_bj_game(user_id, chat_id)
     rnd = BlackjackRound(player_id=user_id, chat_id=chat_id, bet=bet)
     rnd.deal()
     _active_games[key] = rnd
