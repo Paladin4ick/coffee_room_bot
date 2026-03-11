@@ -993,10 +993,21 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
             await message.reply(formatter._t["admin_not_allowed"])
             return
 
+        # Поддержка reply: /unmute без аргументов на сообщение пользователя
         target = await _resolve_username(command.args, user_repo)
         if target is None:
-            await message.reply(formatter._t["unmute_usage"])
-            return
+            reply = message.reply_to_message
+            if reply is not None and reply.from_user is not None:
+                from bot.domain.entities import User as DomainUser
+                tg_user = reply.from_user
+                target = DomainUser(
+                    id=tg_user.id,
+                    username=tg_user.username,
+                    full_name=tg_user.full_name or str(tg_user.id),
+                )
+            else:
+                await message.reply(formatter._t["unmute_usage"])
+                return
 
         display = user_link(target.username, target.full_name, target.id)
 
