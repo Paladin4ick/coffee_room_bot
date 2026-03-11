@@ -52,7 +52,7 @@ blackjack:
 llm:
   model: "gemini-2.5-flash-lite"
   base_url: "https://api.aitunnel.ru/v1"
-  max_output_tokens: 2048       # лимит токенов на ответ
+  max_output_tokens: 4096       # лимит токенов на ответ
   daily_limit_per_user: 4       # запросов /llm + /search на пользователя в сутки
   search_max_results: 7         # сколько результатов поиска парсить
 
