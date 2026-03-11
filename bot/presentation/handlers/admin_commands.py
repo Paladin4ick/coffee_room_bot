@@ -14,7 +14,6 @@ from datetime import datetime, timedelta
 
 from aiogram import F, Router
 from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject
 from aiogram.types import (
     CallbackQuery,
@@ -112,6 +111,48 @@ async def _resolve_user_and_number(args, user_repo):
     username, n = parsed
     user = await user_repo.get_by_username(username)
     return (user, n)
+
+
+async def _resolve_mute_args(args, message, user_repo):
+    """Разбирает аргументы /mute с поддержкой reply.
+
+    Варианты:
+      /mute @username 30    — явный username + минуты (старое поведение)
+      /mute 30              — только минуты, цель берётся из reply
+    Возвращает (User | None, minutes) или None если аргументы невалидны.
+    """
+    from bot.domain.entities import User as DomainUser
+
+    args_str = (args or "").strip()
+    parts = args_str.split()
+
+    # Вариант 1: @username minutes  или  username minutes
+    if len(parts) == 2:
+        parsed = _parse_args_user_number(args_str)
+        if parsed is not None:
+            username, minutes = parsed
+            user = await user_repo.get_by_username(username)
+            return (user, minutes)
+        return None
+
+    # Вариант 2: только число — цель из reply
+    if len(parts) == 1:
+        try:
+            minutes = int(parts[0])
+        except ValueError:
+            return None
+        reply = message.reply_to_message
+        if reply is None or reply.from_user is None:
+            return None
+        tg_user = reply.from_user
+        target = DomainUser(
+            id=tg_user.id,
+            username=tg_user.username,
+            full_name=tg_user.full_name or str(tg_user.id),
+        )
+        return (target, minutes)
+
+    return None
 
 
 def _admin_reply(formatter: MessageFormatter, target, new_value: int) -> str:
@@ -645,10 +686,6 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
                 user_id=target.id,
                 can_invite_users=True
             )
-        except TelegramBadRequest as e:
-            logger.warning("Failed to op user %d: %s", target.id, e)
-            await message.reply(formatter._t["op_failed"])
-            return
         except Exception:
             logger.exception("Failed to op user %d", target.id)
             await message.reply(formatter._t["op_failed"])
@@ -707,10 +744,6 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
                 user_id=target.id,
                 **demote_kw,
             )
-        except TelegramBadRequest as e:
-            logger.warning("Failed to deop user %d: %s", target.id, e)
-            await message.reply(formatter._t["op_failed"])
-            return
         except Exception:
             logger.exception("Failed to deop user %d", target.id)
             await message.reply(formatter._t["op_failed"])
@@ -741,7 +774,7 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
         p = formatter._p
         is_free = _is_admin(message.from_user.username, config.admin.users)
 
-        parsed = await _resolve_user_and_number(command.args, user_repo)
+        parsed = await _resolve_mute_args(command.args, message, user_repo)
         if parsed is None:
             await message.reply(formatter._t["mute_usage"].format(
                 min=mute_cfg.min_minutes, max=mute_cfg.max_minutes,
@@ -914,28 +947,6 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
         user_id = message.from_user.id
         until = datetime.now(TZ_MSK) + timedelta(seconds=seconds)
 
-        # Check if the user is an admin — admins cannot be restricted directly
-        was_admin = False
-        admin_perms: dict | None = None
-        try:
-            member = await bot.get_chat_member(chat_id, user_id)
-            if isinstance(member, ChatMemberOwner):
-                await message.reply(formatter._t["selfmute_failed"])
-                return
-            if isinstance(member, ChatMemberAdministrator):
-                was_admin = True
-                admin_perms = _extract_admin_permissions(member)
-                demote_kw = {f: False for f in ADMIN_PERM_FIELDS}
-                await bot.promote_chat_member(chat_id=chat_id, user_id=user_id, **demote_kw)
-        except TelegramBadRequest as e:
-            logger.warning("selfmute pre-check failed for user %d: %s", user_id, e)
-            await message.reply(formatter._t["selfmute_failed"])
-            return
-        except Exception:
-            logger.exception("selfmute pre-check failed for user %d", user_id)
-            await message.reply(formatter._t["selfmute_failed"])
-            return
-
         try:
             await bot.restrict_chat_member(
                 chat_id=chat_id,
@@ -943,25 +954,7 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
                 permissions=ChatPermissions(can_send_messages=False),
                 until_date=until,
             )
-        except TelegramBadRequest as e:
-            logger.warning("restrict_chat_member failed for selfmute user %d: %s", user_id, e)
-            # Restore admin rights if we demoted the user
-            if was_admin and admin_perms:
-                try:
-                    kw = _promote_kwargs(admin_perms)
-                    await bot.promote_chat_member(chat_id=chat_id, user_id=user_id, **kw)
-                except Exception:
-                    logger.exception("Failed to restore admin rights after selfmute failure for user %d", user_id)
-            await message.reply(formatter._t["selfmute_failed"])
-            return
         except Exception:
-            logger.exception("restrict_chat_member failed for selfmute user %d", user_id)
-            if was_admin and admin_perms:
-                try:
-                    kw = _promote_kwargs(admin_perms)
-                    await bot.promote_chat_member(chat_id=chat_id, user_id=user_id, **kw)
-                except Exception:
-                    logger.exception("Failed to restore admin rights after selfmute failure for user %d", user_id)
             await message.reply(formatter._t["selfmute_failed"])
             return
 
@@ -970,8 +963,8 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
             chat_id=chat_id,
             muted_by=user_id,
             until_at=until,
-            was_admin=was_admin,
-            admin_permissions=admin_perms,
+            was_admin=False,
+            admin_permissions=None,
         ))
 
         duration_str = _format_duration(seconds)
