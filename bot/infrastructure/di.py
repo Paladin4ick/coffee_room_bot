@@ -30,7 +30,8 @@ from bot.application.llm_service import LlmService
 
 from bot.infrastructure.config_loader import AppConfig, Settings, load_config, load_messages, load_help_config
 from bot.infrastructure.message_formatter import MessageFormatter
-from bot.infrastructure.aitunnel_client import AitunnelClient
+from bot.infrastructure.aitunnel_client import AiTunnelClient
+from bot.infrastructure.search_engine import SearchEngine
 from bot.infrastructure.db.transaction_manager import PostgresTransactionManager
 from bot.infrastructure.db.postgres_score_repository import PostgresScoreRepository
 from bot.infrastructure.db.postgres_event_repository import PostgresEventRepository
@@ -215,17 +216,29 @@ class RequestProvider(Provider):
         return SlotsService(machine, config, score_service)
 
     @provide
-    def get_aitunnel_client(self, settings: Settings, config: AppConfig) -> AitunnelClient:
-        return AitunnelClient(
+    def get_aitunnel_client(self, settings: Settings, config: AppConfig) -> AiTunnelClient:
+        return AiTunnelClient(
             api_key=settings.aitunnel_api_key,
             base_url=config.llm.base_url,
+            model=config.llm.model,
+            max_output_tokens=config.llm.max_output_tokens,
         )
 
     @provide
     def get_llm_service(
         self,
         llm_repo: ILlmRepository,
-        client: AitunnelClient,
+        client: AiTunnelClient,
         config: AppConfig,
+        settings: Settings,
     ) -> LlmService:
-        return LlmService(llm_repo, client, config.llm)
+        return LlmService(
+            client=client,
+            search_engine=SearchEngine(settings.openserp_url),
+            llm_repo=llm_repo,
+            system_prompt=config.llm.system_prompt,
+            search_system_prompt=config.llm.search_system_prompt,
+            daily_limit=config.llm.daily_limit_per_user,
+            search_max_results=config.llm.search_max_results,
+            admin_users=config.admin.users,
+        )

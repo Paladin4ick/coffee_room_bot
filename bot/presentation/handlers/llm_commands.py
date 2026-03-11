@@ -19,6 +19,8 @@ from bot.infrastructure.message_formatter import MessageFormatter
 logger = logging.getLogger(__name__)
 router = Router(name="llm_commands")
 
+NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
+
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _LINK_RE = re.compile(r"(<a\s[^>]*>)(.*?)(</a>)", re.DOTALL)
