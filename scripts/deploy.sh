@@ -16,7 +16,12 @@ if ! crontab -l 2>/dev/null | grep -qF "$SCRIPT_PATH"; then
     echo "[deploy] cron job installed"
 fi
 
-echo "[deploy] $(date '+%Y-%m-%d %H:%M:%S') — starting"
+FORCE=false
+if [[ "${1:-}" == "--force" ]]; then
+    FORCE=true
+fi
+
+echo "[deploy] $(date '+%Y-%m-%d %H:%M:%S') — starting${FORCE:+ (force)}"
 
 # Запоминаем текущий коммит ДО пула
 BEFORE=$(git rev-parse HEAD)
@@ -29,19 +34,21 @@ fi
 
 AFTER=$(git rev-parse HEAD)
 
-# Ничего не изменилось
-if [[ "$BEFORE" == "$AFTER" ]]; then
+# Ничего не изменилось — пропускаем, если не --force
+if [[ "$BEFORE" == "$AFTER" ]] && [[ "$FORCE" == "false" ]]; then
     echo "[deploy] nothing changed, skipping"
     exit 0
 fi
 
-echo "[deploy] updated $BEFORE -> $AFTER"
+if [[ "$BEFORE" != "$AFTER" ]]; then
+    echo "[deploy] updated $BEFORE -> $AFTER"
+fi
 
 # Если обновился сам скрипт — перезапускаем его новую версию
 CHANGED_SCRIPTS=$(git diff --name-only "$BEFORE" "$AFTER" -- scripts/deploy.sh)
 if [[ -n "$CHANGED_SCRIPTS" ]]; then
     echo "[deploy] script itself updated, re-executing new version"
-    exec bash "$SCRIPT_PATH"
+    exec bash "$SCRIPT_PATH" "$@"
 fi
 
 # Пересобираем и перезапускаем весь стек
