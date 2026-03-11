@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from aiogram import Router
+from aiogram import Bot, Router
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandObject
 from aiogram.types import LinkPreviewOptions, Message
@@ -13,6 +13,7 @@ from dishka.integrations.aiogram import FromDishka, inject
 from bot.application.slots_service import SlotsService, SlotsConfig, SpinOutcome
 from bot.infrastructure.config_loader import AppConfig
 from bot.infrastructure.message_formatter import MessageFormatter
+from bot.presentation.utils import schedule_delete
 
 logger = logging.getLogger(__name__)
 router = Router(name="slots")
@@ -35,6 +36,7 @@ _OUTCOME_TEXT = {
 @inject
 async def cmd_slots(
     message: Message,
+    bot: Bot,
     command: CommandObject,
     slots_service: FromDishka[SlotsService],
     slots_config: FromDishka[SlotsConfig],
@@ -105,4 +107,5 @@ async def cmd_slots(
         f"Баланс: {result.new_balance} {p.pluralize(result.new_balance)}"
     )
 
-    await message.reply(text, parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+    reply = await message.reply(text, parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+    schedule_delete(bot, message, reply)
