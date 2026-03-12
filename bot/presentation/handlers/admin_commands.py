@@ -25,18 +25,18 @@ from aiogram.types import (
 )
 from dishka.integrations.aiogram import FromDishka, inject
 
-from bot.application.score_service import ScoreService, SPECIAL_EMOJI
-from bot.application.mute_service import MuteService
-from bot.application.interfaces.user_repository import IUserRepository
-from bot.application.interfaces.saved_permissions_repository import ISavedPermissionsRepository
 from bot.application.interfaces.mute_protection_repository import IMuteProtectionRepository
+from bot.application.interfaces.saved_permissions_repository import ISavedPermissionsRepository
+from bot.application.interfaces.user_repository import IUserRepository
+from bot.application.mute_service import MuteService
+from bot.application.score_service import SPECIAL_EMOJI, ScoreService
+from bot.domain.bot_utils import format_duration, is_admin, parse_duration
 from bot.domain.entities import MuteEntry
 from bot.domain.tz import TZ_MSK
-from bot.domain.bot_utils import is_admin, parse_duration, format_duration
 from bot.infrastructure.config_loader import AppConfig
 from bot.infrastructure.message_formatter import MessageFormatter, user_link
-from bot.presentation.utils import NO_PREVIEW
 from bot.presentation.handlers.help_renderer import HelpRenderer
+from bot.presentation.utils import NO_PREVIEW
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +72,7 @@ MODERATOR_PERMS = {
 
 
 # ── Вспомогательные функции ───────────────────────────────────────
+
 
 def _extract_admin_permissions(member: ChatMemberAdministrator) -> dict:
     perms: dict = {}
@@ -164,6 +165,7 @@ def _admin_reply(formatter: MessageFormatter, target, new_value: int) -> str:
 
 # ── Снятие мута ───────────────────────────────────────────────────
 
+
 async def _unmute_user(bot, mute_service: MuteService, entry: MuteEntry) -> None:
     try:
         await bot.restrict_chat_member(
@@ -206,13 +208,15 @@ async def _unmute_user(bot, mute_service: MuteService, entry: MuteEntry) -> None
         except Exception:
             logger.exception(
                 "Failed to restore admin rights for user %d in chat %d",
-                entry.user_id, entry.chat_id,
+                entry.user_id,
+                entry.chat_id,
             )
 
     await mute_service.delete_mute(entry.user_id, entry.chat_id)
 
 
 # ── Роутер ────────────────────────────────────────────────────────
+
 
 def create_admin_router(prefix: str) -> Router:  # prefix оставлен для совместимости
     router = Router(name="admin_commands")
@@ -242,7 +246,9 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
             await message.reply(formatter._t["error_user_not_found"])
             return
         new_value = await score_service.set_score(target.id, message.chat.id, 0, admin_id=message.from_user.id)
-        await message.reply(_admin_reply(formatter, target, new_value), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+        await message.reply(
+            _admin_reply(formatter, target, new_value), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW
+        )
 
     # ── /set ──────────────────────────────────────────────────────
 
@@ -270,7 +276,9 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
             await message.reply(formatter._t["error_user_not_found"])
             return
         new_value = await score_service.set_score(target.id, message.chat.id, amount, admin_id=message.from_user.id)
-        await message.reply(_admin_reply(formatter, target, new_value), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+        await message.reply(
+            _admin_reply(formatter, target, new_value), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW
+        )
 
     # ── /add ──────────────────────────────────────────────────────
 
@@ -301,7 +309,9 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
             await message.reply(formatter._t["admin_negative_amount"])
             return
         new_value = await score_service.add_score(target.id, message.chat.id, amount, admin_id=message.from_user.id)
-        await message.reply(_admin_reply(formatter, target, new_value), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+        await message.reply(
+            _admin_reply(formatter, target, new_value), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW
+        )
 
     # ── /sub ──────────────────────────────────────────────────────
 
@@ -332,7 +342,9 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
             await message.reply(formatter._t["admin_negative_amount"])
             return
         new_value = await score_service.add_score(target.id, message.chat.id, -amount, admin_id=message.from_user.id)
-        await message.reply(_admin_reply(formatter, target, new_value), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+        await message.reply(
+            _admin_reply(formatter, target, new_value), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW
+        )
 
     # ── /save ─────────────────────────────────────────────────────
 
@@ -359,16 +371,26 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
         try:
             member = await message.bot.get_chat_member(message.chat.id, target.id)
         except Exception:
-            await message.reply(formatter._t["save_not_admin"].format(user=display), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+            await message.reply(
+                formatter._t["save_not_admin"].format(user=display),
+                parse_mode=ParseMode.HTML,
+                link_preview_options=NO_PREVIEW,
+            )
             return
         if not isinstance(member, ChatMemberAdministrator):
-            await message.reply(formatter._t["save_not_admin"].format(user=display), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+            await message.reply(
+                formatter._t["save_not_admin"].format(user=display),
+                parse_mode=ParseMode.HTML,
+                link_preview_options=NO_PREVIEW,
+            )
             return
         perms = _extract_admin_permissions(member)
         existing = await saved_perms_repo.get(target.id, message.chat.id)
         await saved_perms_repo.save(target.id, message.chat.id, perms)
         key = "save_overwritten" if existing else "save_success"
-        await message.reply(formatter._t[key].format(user=display), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+        await message.reply(
+            formatter._t[key].format(user=display), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW
+        )
 
     # ── /restore ──────────────────────────────────────────────────
 
@@ -394,17 +416,27 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
         display = user_link(target.username, target.full_name, target.id)
         perms = await saved_perms_repo.get(target.id, message.chat.id)
         if perms is None:
-            await message.reply(formatter._t["restore_not_found"].format(user=display), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+            await message.reply(
+                formatter._t["restore_not_found"].format(user=display),
+                parse_mode=ParseMode.HTML,
+                link_preview_options=NO_PREVIEW,
+            )
             return
         try:
             await message.bot.promote_chat_member(chat_id=message.chat.id, user_id=target.id, **_promote_kwargs(perms))
             if perms.get("custom_title"):
-                await message.bot.set_chat_administrator_custom_title(chat_id=message.chat.id, user_id=target.id, custom_title=perms["custom_title"])
+                await message.bot.set_chat_administrator_custom_title(
+                    chat_id=message.chat.id, user_id=target.id, custom_title=perms["custom_title"]
+                )
         except Exception:
             logger.exception("Failed to restore permissions for user %d", target.id)
             await message.reply(formatter._t["restore_failed"])
             return
-        await message.reply(formatter._t["restore_success"].format(user=display), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+        await message.reply(
+            formatter._t["restore_success"].format(user=display),
+            parse_mode=ParseMode.HTML,
+            link_preview_options=NO_PREVIEW,
+        )
 
     # ── /op ───────────────────────────────────────────────────────
 
@@ -434,7 +466,11 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
             await message.reply(formatter._t["op_failed"])
             return
         if isinstance(member, (ChatMemberOwner, ChatMemberAdministrator)):
-            await message.reply(formatter._t["op_already"].format(user=display), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+            await message.reply(
+                formatter._t["op_already"].format(user=display),
+                parse_mode=ParseMode.HTML,
+                link_preview_options=NO_PREVIEW,
+            )
             return
         try:
             await message.bot.promote_chat_member(chat_id=message.chat.id, user_id=target.id, can_invite_users=True)
@@ -443,7 +479,9 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
             await message.reply(formatter._t["op_failed"])
             return
         await saved_perms_repo.save(target.id, message.chat.id, MODERATOR_PERMS)
-        await message.reply(formatter._t["op_success"].format(user=display), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+        await message.reply(
+            formatter._t["op_success"].format(user=display), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW
+        )
 
     # ── /deop ─────────────────────────────────────────────────────
 
@@ -472,10 +510,18 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
             await message.reply(formatter._t["op_failed"])
             return
         if isinstance(member, ChatMemberOwner):
-            await message.reply(formatter._t["op_already"].format(user=display), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+            await message.reply(
+                formatter._t["op_already"].format(user=display),
+                parse_mode=ParseMode.HTML,
+                link_preview_options=NO_PREVIEW,
+            )
             return
         if not isinstance(member, ChatMemberAdministrator):
-            await message.reply(formatter._t["deop_not_admin"].format(user=display), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+            await message.reply(
+                formatter._t["deop_not_admin"].format(user=display),
+                parse_mode=ParseMode.HTML,
+                link_preview_options=NO_PREVIEW,
+            )
             return
         try:
             demote_kw = {f: False for f in _ADMIN_PERM_FIELDS}
@@ -484,7 +530,11 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
             logger.exception("Failed to deop user %d", target.id)
             await message.reply(formatter._t["op_failed"])
             return
-        await message.reply(formatter._t["deop_success"].format(user=display), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+        await message.reply(
+            formatter._t["deop_success"].format(user=display),
+            parse_mode=ParseMode.HTML,
+            link_preview_options=NO_PREVIEW,
+        )
 
     # ── /mute ─────────────────────────────────────────────────────
 
@@ -516,18 +566,31 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
             await message.reply(formatter._t["mute_self"])
             return
         if minutes < mute_cfg.min_minutes or minutes > mute_cfg.max_minutes:
-            await message.reply(formatter._t["mute_invalid_minutes"].format(min=mute_cfg.min_minutes, max=mute_cfg.max_minutes))
+            await message.reply(
+                formatter._t["mute_invalid_minutes"].format(min=mute_cfg.min_minutes, max=mute_cfg.max_minutes)
+            )
             return
         protected_until = await protection_repo.get(target.id, message.chat.id)
         if protected_until is not None:
             target_link = user_link(target.username, target.full_name, target.id)
             until_str = protected_until.astimezone(TZ_MSK).strftime("%H:%M %d.%m")
-            await message.reply(formatter._t["mute_target_protected"].format(target=target_link, until=until_str), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+            await message.reply(
+                formatter._t["mute_target_protected"].format(target=target_link, until=until_str),
+                parse_mode=ParseMode.HTML,
+                link_preview_options=NO_PREVIEW,
+            )
             return
         cost = minutes * mute_cfg.cost_per_minute
         score = await score_service.get_score(message.from_user.id, message.chat.id)
         if score.value < cost:
-            await message.reply(formatter._t["mute_not_enough"].format(cost=cost, score_word=p.pluralize(cost), balance=score.value, score_word_balance=p.pluralize(score.value)))
+            await message.reply(
+                formatter._t["mute_not_enough"].format(
+                    cost=cost,
+                    score_word=p.pluralize(cost),
+                    balance=score.value,
+                    score_word_balance=p.pluralize(score.value),
+                )
+            )
             return
         bot = message.bot
         chat_id = message.chat.id
@@ -542,12 +605,19 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
         if was_admin:
             admin_perms = _extract_admin_permissions(member)
             try:
-                await bot.promote_chat_member(chat_id=chat_id, user_id=target.id, **{f: False for f in _ADMIN_PERM_FIELDS})
+                await bot.promote_chat_member(
+                    chat_id=chat_id, user_id=target.id, **{f: False for f in _ADMIN_PERM_FIELDS}
+                )
             except Exception:
                 await message.reply(formatter._t["mute_failed"])
                 return
         try:
-            await bot.restrict_chat_member(chat_id=chat_id, user_id=target.id, permissions=ChatPermissions(can_send_messages=False), until_date=until)
+            await bot.restrict_chat_member(
+                chat_id=chat_id,
+                user_id=target.id,
+                permissions=ChatPermissions(can_send_messages=False),
+                until_date=until,
+            )
         except Exception:
             if was_admin and admin_perms:
                 try:
@@ -556,17 +626,55 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
                     logger.exception("Failed to restore admin rights after mute failure")
             await message.reply(formatter._t["mute_failed"])
             return
-        await mute_service.save_mute(MuteEntry(user_id=target.id, chat_id=chat_id, muted_by=message.from_user.id, until_at=until, was_admin=was_admin, admin_permissions=admin_perms))
-        result = await score_service.spend_score(actor_id=message.from_user.id, target_id=target.id, chat_id=chat_id, cost=cost)
+        await mute_service.save_mute(
+            MuteEntry(
+                user_id=target.id,
+                chat_id=chat_id,
+                muted_by=message.from_user.id,
+                until_at=until,
+                was_admin=was_admin,
+                admin_permissions=admin_perms,
+            )
+        )
+        result = await score_service.spend_score(
+            actor_id=message.from_user.id, target_id=target.id, chat_id=chat_id, cost=cost
+        )
         if not result.success:
-            await _unmute_user(bot, mute_service, MuteEntry(user_id=target.id, chat_id=chat_id, muted_by=message.from_user.id, until_at=until, was_admin=was_admin, admin_permissions=admin_perms))
-            await message.reply(formatter._t["mute_not_enough"].format(cost=cost, score_word=p.pluralize(cost), balance=result.current_balance, score_word_balance=p.pluralize(result.current_balance)))
+            await _unmute_user(
+                bot,
+                mute_service,
+                MuteEntry(
+                    user_id=target.id,
+                    chat_id=chat_id,
+                    muted_by=message.from_user.id,
+                    until_at=until,
+                    was_admin=was_admin,
+                    admin_permissions=admin_perms,
+                ),
+            )
+            await message.reply(
+                formatter._t["mute_not_enough"].format(
+                    cost=cost,
+                    score_word=p.pluralize(cost),
+                    balance=result.current_balance,
+                    score_word_balance=p.pluralize(result.current_balance),
+                )
+            )
             return
         actor_link = user_link(message.from_user.username, message.from_user.full_name or "", message.from_user.id)
         target_link = user_link(target.username, target.full_name, target.id)
         await message.reply(
-            formatter._t["mute_success"].format(actor=actor_link, target=target_link, minutes=minutes, cost=cost, score_word=p.pluralize(cost), balance=result.new_balance, score_word_balance=p.pluralize(result.new_balance)),
-            parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW,
+            formatter._t["mute_success"].format(
+                actor=actor_link,
+                target=target_link,
+                minutes=minutes,
+                cost=cost,
+                score_word=p.pluralize(cost),
+                balance=result.new_balance,
+                score_word_balance=p.pluralize(result.new_balance),
+            ),
+            parse_mode=ParseMode.HTML,
+            link_preview_options=NO_PREVIEW,
         )
 
     # ── /amute ────────────────────────────────────────────────────
@@ -621,12 +729,19 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
         if was_admin:
             admin_perms = _extract_admin_permissions(member)
             try:
-                await bot.promote_chat_member(chat_id=chat_id, user_id=target.id, **{f: False for f in _ADMIN_PERM_FIELDS})
+                await bot.promote_chat_member(
+                    chat_id=chat_id, user_id=target.id, **{f: False for f in _ADMIN_PERM_FIELDS}
+                )
             except Exception:
                 await message.reply(formatter._t["mute_failed"])
                 return
         try:
-            await bot.restrict_chat_member(chat_id=chat_id, user_id=target.id, permissions=ChatPermissions(can_send_messages=False), until_date=until)
+            await bot.restrict_chat_member(
+                chat_id=chat_id,
+                user_id=target.id,
+                permissions=ChatPermissions(can_send_messages=False),
+                until_date=until,
+            )
         except Exception:
             if was_admin and admin_perms:
                 try:
@@ -635,12 +750,22 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
                     logger.exception("Failed to restore admin rights after amute failure")
             await message.reply(formatter._t["mute_failed"])
             return
-        await mute_service.save_mute(MuteEntry(user_id=target.id, chat_id=chat_id, muted_by=message.from_user.id, until_at=until, was_admin=was_admin, admin_permissions=admin_perms))
+        await mute_service.save_mute(
+            MuteEntry(
+                user_id=target.id,
+                chat_id=chat_id,
+                muted_by=message.from_user.id,
+                until_at=until,
+                was_admin=was_admin,
+                admin_permissions=admin_perms,
+            )
+        )
         actor_link = user_link(message.from_user.username, message.from_user.full_name or "", message.from_user.id)
         target_link = user_link(target.username, target.full_name, target.id)
         await message.reply(
             formatter._t["amute_success"].format(actor=actor_link, target=target_link, minutes=minutes),
-            parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW,
+            parse_mode=ParseMode.HTML,
+            link_preview_options=NO_PREVIEW,
         )
 
     # ── /selfmute ─────────────────────────────────────────────────
@@ -660,11 +785,19 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
         min_sec = mute_cfg.selfmute_min_minutes * 60
         max_sec = mute_cfg.selfmute_max_minutes * 60
         if not command.args:
-            await message.reply(formatter._t["selfmute_usage"].format(min=mute_cfg.selfmute_min_minutes, max=mute_cfg.selfmute_max_minutes))
+            await message.reply(
+                formatter._t["selfmute_usage"].format(
+                    min=mute_cfg.selfmute_min_minutes, max=mute_cfg.selfmute_max_minutes
+                )
+            )
             return
         seconds = parse_duration(command.args)
         if seconds is None or seconds <= 0 or seconds < min_sec or seconds > max_sec:
-            await message.reply(formatter._t["selfmute_invalid_minutes"].format(min=mute_cfg.selfmute_min_minutes, max=mute_cfg.selfmute_max_minutes))
+            await message.reply(
+                formatter._t["selfmute_invalid_minutes"].format(
+                    min=mute_cfg.selfmute_min_minutes, max=mute_cfg.selfmute_max_minutes
+                )
+            )
             return
         bot = message.bot
         chat_id = message.chat.id
@@ -680,13 +813,17 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
             if isinstance(member, ChatMemberAdministrator):
                 was_admin = True
                 admin_perms = _extract_admin_permissions(member)
-                await bot.promote_chat_member(chat_id=chat_id, user_id=user_id, **{f: False for f in _ADMIN_PERM_FIELDS})
+                await bot.promote_chat_member(
+                    chat_id=chat_id, user_id=user_id, **{f: False for f in _ADMIN_PERM_FIELDS}
+                )
         except TelegramBadRequest as e:
             logger.warning("selfmute pre-check failed for user %d: %s", user_id, e)
             await message.reply(formatter._t["selfmute_failed"])
             return
         try:
-            await bot.restrict_chat_member(chat_id=chat_id, user_id=user_id, permissions=ChatPermissions(can_send_messages=False), until_date=until)
+            await bot.restrict_chat_member(
+                chat_id=chat_id, user_id=user_id, permissions=ChatPermissions(can_send_messages=False), until_date=until
+            )
         except Exception:
             if was_admin and admin_perms:
                 try:
@@ -695,11 +832,21 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
                     logger.exception("Failed to restore admin rights after selfmute failure for user %d", user_id)
             await message.reply(formatter._t["selfmute_failed"])
             return
-        await mute_service.save_mute(MuteEntry(user_id=user_id, chat_id=chat_id, muted_by=user_id, until_at=until, was_admin=was_admin, admin_permissions=admin_perms))
+        await mute_service.save_mute(
+            MuteEntry(
+                user_id=user_id,
+                chat_id=chat_id,
+                muted_by=user_id,
+                until_at=until,
+                was_admin=was_admin,
+                admin_permissions=admin_perms,
+            )
+        )
         user_link_str = user_link(message.from_user.username, message.from_user.full_name or "", user_id)
         await message.reply(
             formatter._t["selfmute_success"].format(user=user_link_str, duration=format_duration(seconds)),
-            parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW,
+            parse_mode=ParseMode.HTML,
+            link_preview_options=NO_PREVIEW,
         )
 
     # ── /unmute ───────────────────────────────────────────────────
@@ -724,6 +871,7 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
             reply = message.reply_to_message
             if reply is not None and reply.from_user is not None:
                 from bot.domain.entities import User as DomainUser
+
                 tg = reply.from_user
                 target = DomainUser(id=tg.id, username=tg.username, full_name=tg.full_name or str(tg.id))
             else:
@@ -732,10 +880,18 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
         display = user_link(target.username, target.full_name, target.id)
         entry = await mute_service._repo.get(target.id, message.chat.id)
         if entry is None:
-            await message.reply(formatter._t["unmute_not_muted"].format(user=display), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+            await message.reply(
+                formatter._t["unmute_not_muted"].format(user=display),
+                parse_mode=ParseMode.HTML,
+                link_preview_options=NO_PREVIEW,
+            )
             return
         await _unmute_user(message.bot, mute_service, entry)
-        await message.reply(formatter._t["unmute_success"].format(user=display), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+        await message.reply(
+            formatter._t["unmute_success"].format(user=display),
+            parse_mode=ParseMode.HTML,
+            link_preview_options=NO_PREVIEW,
+        )
 
     # ── /tag ──────────────────────────────────────────────────────
 
@@ -757,7 +913,9 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
         chat_id = message.chat.id
         args = command.args
         if not args:
-            await message.reply(formatter._t["tag_usage"].format(cost_self=tc.cost_self, sw_self=p.pluralize(tc.cost_self)))
+            await message.reply(
+                formatter._t["tag_usage"].format(cost_self=tc.cost_self, sw_self=p.pluralize(tc.cost_self))
+            )
             return
         parts = args.strip().split(maxsplit=1)
         if parts[0].startswith("@"):
@@ -767,9 +925,11 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
                 return
             new_tag = parts[1].strip() if len(parts) > 1 else None
             if new_tag is None:
-                await message.reply(formatter._t["tag_usage"].format(cost_self=tc.cost_self, sw_self=p.pluralize(tc.cost_self)))
+                await message.reply(
+                    formatter._t["tag_usage"].format(cost_self=tc.cost_self, sw_self=p.pluralize(tc.cost_self))
+                )
                 return
-            is_self = (target.id == message.from_user.id)
+            is_self = target.id == message.from_user.id
         else:
             target = await user_repo.get_by_id(message.from_user.id)
             if target is None:
@@ -777,7 +937,7 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
                 return
             new_tag = args.strip()
             is_self = True
-        clearing = (new_tag == "--clear")
+        clearing = new_tag == "--clear"
         is_free = is_admin(message.from_user.username, config.admin.users)
         if not clearing and len(new_tag) > tc.max_length:
             await message.reply(formatter._t["tag_too_long"].format(max=tc.max_length))
@@ -799,7 +959,14 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
         if not is_free:
             score = await score_service.get_score(message.from_user.id, chat_id)
             if score.value < cost:
-                await message.reply(formatter._t["tag_not_enough"].format(cost=cost, score_word=p.pluralize(cost), balance=score.value, score_word_balance=p.pluralize(score.value)))
+                await message.reply(
+                    formatter._t["tag_not_enough"].format(
+                        cost=cost,
+                        score_word=p.pluralize(cost),
+                        balance=score.value,
+                        score_word_balance=p.pluralize(score.value),
+                    )
+                )
                 return
         try:
             await bot.set_chat_member_tag(chat_id=chat_id, user_id=target.id, tag=None if clearing else new_tag)
@@ -808,17 +975,43 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
             return
         target_link = user_link(target.username, target.full_name, target.id)
         if is_free:
-            text = formatter._t["tag_cleared_free"].format(target=target_link) if clearing else formatter._t["tag_success_free"].format(target=target_link, tag=new_tag)
+            text = (
+                formatter._t["tag_cleared_free"].format(target=target_link)
+                if clearing
+                else formatter._t["tag_success_free"].format(target=target_link, tag=new_tag)
+            )
             await message.reply(text, parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
             return
-        result = await score_service.spend_score(actor_id=message.from_user.id, target_id=target.id, chat_id=chat_id, cost=cost, emoji=SPECIAL_EMOJI["tag"])
+        result = await score_service.spend_score(
+            actor_id=message.from_user.id, target_id=target.id, chat_id=chat_id, cost=cost, emoji=SPECIAL_EMOJI["tag"]
+        )
         if not result.success:
-            await message.reply(formatter._t["tag_not_enough"].format(cost=cost, score_word=p.pluralize(cost), balance=result.current_balance, score_word_balance=p.pluralize(result.current_balance)))
+            await message.reply(
+                formatter._t["tag_not_enough"].format(
+                    cost=cost,
+                    score_word=p.pluralize(cost),
+                    balance=result.current_balance,
+                    score_word_balance=p.pluralize(result.current_balance),
+                )
+            )
             return
         if clearing:
-            text = formatter._t["tag_cleared"].format(target=target_link, cost=cost, score_word=p.pluralize(cost), balance=result.new_balance, score_word_balance=p.pluralize(result.new_balance))
+            text = formatter._t["tag_cleared"].format(
+                target=target_link,
+                cost=cost,
+                score_word=p.pluralize(cost),
+                balance=result.new_balance,
+                score_word_balance=p.pluralize(result.new_balance),
+            )
         else:
-            text = formatter._t["tag_success"].format(target=target_link, tag=new_tag, cost=cost, score_word=p.pluralize(cost), balance=result.new_balance, score_word_balance=p.pluralize(result.new_balance))
+            text = formatter._t["tag_success"].format(
+                target=target_link,
+                tag=new_tag,
+                cost=cost,
+                score_word=p.pluralize(cost),
+                balance=result.new_balance,
+                score_word_balance=p.pluralize(result.new_balance),
+            )
         await message.reply(text, parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
 
     # ── /transfer ─────────────────────────────────────────────────
@@ -851,15 +1044,32 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
         if target.id == message.from_user.id:
             await message.reply(formatter._t["transfer_self"])
             return
-        result = await score_service.transfer_score(sender_id=message.from_user.id, receiver_id=target.id, chat_id=chat_id, amount=amount)
+        result = await score_service.transfer_score(
+            sender_id=message.from_user.id, receiver_id=target.id, chat_id=chat_id, amount=amount
+        )
         if not result.success:
-            await message.reply(formatter._t["transfer_not_enough"].format(amount=amount, score_word=p.pluralize(amount), balance=result.current_balance, score_word_balance=p.pluralize(result.current_balance)))
+            await message.reply(
+                formatter._t["transfer_not_enough"].format(
+                    amount=amount,
+                    score_word=p.pluralize(amount),
+                    balance=result.current_balance,
+                    score_word_balance=p.pluralize(result.current_balance),
+                )
+            )
             return
         sender_link = user_link(message.from_user.username, message.from_user.full_name or "", message.from_user.id)
         receiver_link = user_link(target.username, target.full_name, target.id)
         await message.reply(
-            formatter._t["transfer_success"].format(sender=sender_link, receiver=receiver_link, amount=amount, score_word=p.pluralize(amount), sender_balance=result.sender_balance, score_word_sender=p.pluralize(result.sender_balance)),
-            parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW,
+            formatter._t["transfer_success"].format(
+                sender=sender_link,
+                receiver=receiver_link,
+                amount=amount,
+                score_word=p.pluralize(amount),
+                sender_balance=result.sender_balance,
+                score_word_sender=p.pluralize(result.sender_balance),
+            ),
+            parse_mode=ParseMode.HTML,
+            link_preview_options=NO_PREVIEW,
         )
 
     # ── /protect ──────────────────────────────────────────────────
@@ -883,15 +1093,37 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
         hours = mute_cfg.protection_duration_hours
         score = await score_service.get_score(user_id, chat_id)
         if score.value < cost:
-            await message.reply(formatter._t["protect_not_enough"].format(cost=cost, score_word=p.pluralize(cost), balance=score.value, score_word_balance=p.pluralize(score.value)))
+            await message.reply(
+                formatter._t["protect_not_enough"].format(
+                    cost=cost,
+                    score_word=p.pluralize(cost),
+                    balance=score.value,
+                    score_word_balance=p.pluralize(score.value),
+                )
+            )
             return
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text=f"✅ Да, потратить {cost} {p.pluralize(cost)}", callback_data=f"protect:confirm:{user_id}:{chat_id}"),
-            InlineKeyboardButton(text="❌ Отмена", callback_data=f"protect:cancel:{user_id}"),
-        ]])
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=f"✅ Да, потратить {cost} {p.pluralize(cost)}",
+                        callback_data=f"protect:confirm:{user_id}:{chat_id}",
+                    ),
+                    InlineKeyboardButton(text="❌ Отмена", allback_data=f"protect:cancel:{user_id}"),
+                ]
+            ]
+        )
         await message.reply(
-            formatter._t["protect_confirm"].format(hours=hours, cost=cost, score_word=p.pluralize(cost), balance=score.value, score_word_balance=p.pluralize(score.value)),
-            parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW, reply_markup=kb,
+            formatter._t["protect_confirm"].format(
+                hours=hours,
+                cost=cost,
+                score_word=p.pluralize(cost),
+                balance=score.value,
+                score_word_balance=p.pluralize(score.value),
+            ),
+            parse_mode=ParseMode.HTML,
+            link_preview_options=NO_PREVIEW,
+            reply_markup=kb,
         )
 
     @router.callback_query(F.data.startswith("protect:"))
@@ -928,10 +1160,19 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
         cost = mute_cfg.protection_cost
         hours = mute_cfg.protection_duration_hours
         user_id = owner_id
-        result = await score_service.spend_score(actor_id=user_id, target_id=user_id, chat_id=chat_id, cost=cost, emoji=SPECIAL_EMOJI["protect"])
+        result = await score_service.spend_score(
+            actor_id=user_id, target_id=user_id, chat_id=chat_id, cost=cost, emoji=SPECIAL_EMOJI["protect"]
+        )
         if not result.success:
             try:
-                await callback.message.edit_text(formatter._t["protect_not_enough"].format(cost=cost, score_word=p.pluralize(cost), balance=result.current_balance, score_word_balance=p.pluralize(result.current_balance)))
+                await callback.message.edit_text(
+                    formatter._t["protect_not_enough"].format(
+                        cost=cost,
+                        score_word=p.pluralize(cost),
+                        balance=result.current_balance,
+                        score_word_balance=p.pluralize(result.current_balance),
+                    )
+                )
             except Exception:
                 pass
             await safe_answer()
@@ -943,9 +1184,22 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
         until_str = new_until.strftime("%H:%M %d.%m")
         user_link_str = user_link(callback.from_user.username, callback.from_user.full_name or "", user_id)
         if existing and existing > now:
-            text = formatter._t["protect_extended"].format(until=until_str, cost=cost, score_word=p.pluralize(cost), balance=result.new_balance, score_word_balance=p.pluralize(result.new_balance))
+            text = formatter._t["protect_extended"].format(
+                until=until_str,
+                cost=cost,
+                score_word=p.pluralize(cost),
+                balance=result.new_balance,
+                score_word_balance=p.pluralize(result.new_balance),
+            )
         else:
-            text = formatter._t["protect_success"].format(user=user_link_str, hours=hours, cost=cost, score_word=p.pluralize(cost), balance=result.new_balance, score_word_balance=p.pluralize(result.new_balance))
+            text = formatter._t["protect_success"].format(
+                user=user_link_str,
+                hours=hours,
+                cost=cost,
+                score_word=p.pluralize(cost),
+                balance=result.new_balance,
+                score_word_balance=p.pluralize(result.new_balance),
+            )
         try:
             await callback.message.edit_text(text, parse_mode=ParseMode.HTML)
         except Exception:
@@ -1070,7 +1324,9 @@ def create_admin_router(prefix: str) -> Router:  # prefix оставлен дл�
             return
 
         try:
-            await callback.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb, link_preview_options=NO_PREVIEW)
+            await callback.message.edit_text(
+                text, parse_mode=ParseMode.HTML, reply_markup=kb, link_preview_options=NO_PREVIEW
+            )
         except Exception:
             pass
 

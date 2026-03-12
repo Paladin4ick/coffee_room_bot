@@ -1,5 +1,5 @@
-from bot.domain.entities import Reaction
 from bot.domain.emoji_utils import normalize_emoji
+from bot.domain.entities import Reaction
 
 
 class ReactionRegistry:

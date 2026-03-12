@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass
 
 from bot.application.interfaces.llm_repository import ILlmRepository
@@ -59,8 +58,9 @@ class LlmService:
         if count >= self._daily_limit:
             raise RateLimitExceeded
 
-    async def _make_result(self, text: str, user_id: int, username: str | None,
-                           input_tokens: int, output_tokens: int) -> LlmResult:
+    async def _make_result(
+        self, text: str, user_id: int, username: str | None, input_tokens: int, output_tokens: int
+    ) -> LlmResult:
         used = await self._repo.count_today(user_id)
         return LlmResult(
             text=text,
@@ -109,8 +109,13 @@ class LlmService:
     # ── Main search flow ─────────────────────────────────────────────
 
     async def search_and_answer(
-        self, user_id: int, chat_id: int, username: str | None, query: str,
-        *, debug: bool = False,
+        self,
+        user_id: int,
+        chat_id: int,
+        username: str | None,
+        query: str,
+        *,
+        debug: bool = False,
     ) -> LlmResult:
         await self._check_limit(user_id, username)
 
@@ -118,7 +123,9 @@ class LlmService:
 
         # ── Search + fetch pages ──────────────────────────────────
         results = await self._search.search_with_content(
-            query, max_results=self._search_max_results, max_fetch=5,
+            query,
+            max_results=self._search_max_results,
+            max_fetch=5,
         )
 
         if debug:
@@ -131,7 +138,7 @@ class LlmService:
         context_text = SearchEngine.format_context(results, include_content=True)
 
         if debug:
-            trace_parts.append(f"\n{'='*60}")
+            trace_parts.append(f"\n{'=' * 60}")
             trace_parts.append(f"=== LLM CONTEXT [{len(context_text)} chars] ===\n{context_text}")
 
         # ── Single LLM call: answer WITH links ───────────────────
@@ -144,14 +151,14 @@ class LlmService:
         text = resp.text or "Не удалось получить ответ."
 
         if debug:
-            trace_parts.append(f"\n{'='*60}")
+            trace_parts.append(f"\n{'=' * 60}")
             trace_parts.append(f"=== LLM: in={resp.input_tokens} out={resp.output_tokens} ===")
             trace_parts.append(f"=== OUTPUT [{len(text)} chars] ===\n{text}")
 
         text = self._dedup_text(text)
 
         if debug:
-            trace_parts.append(f"\n{'='*60}")
+            trace_parts.append(f"\n{'=' * 60}")
             trace_parts.append(f"=== FINAL [{len(text)} chars] ===\n{text}")
             trace_parts.append(f"\n=== TOTALS: input_tokens={resp.input_tokens} output_tokens={resp.output_tokens} ===")
 

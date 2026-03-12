@@ -67,4 +67,4 @@ class MessageFormatter:
         for e in events:
             rows.append(self._t["history_row"].format(**e))
         body = "\n".join(rows)
-        return f'{title}\n<blockquote expandable>{body}</blockquote>'
+        return f"{title}\n<blockquote expandable>{body}</blockquote>"

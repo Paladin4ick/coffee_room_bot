@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from bot.application.slots_service import SlotsConfig, SpinResult, SpinOutcome
+from bot.application.slots_service import SlotsConfig, SpinOutcome, SpinResult
 from bot.infrastructure.redis_store import RedisStore
 
 MAX_DAILY_SPINS = 20
@@ -22,6 +22,7 @@ def make_guard_daily_limit(store: RedisStore):
         if ok:
             await store.slots_daily_increment(user_id, chat_id)
         return ok
+
     return guard_daily_limit
 
 
@@ -31,27 +32,37 @@ def make_guard_cooldown(store: RedisStore):
         if ok:
             await store.slots_cooldown_set(user_id, chat_id, COOLDOWN_SECONDS)
         return ok
+
     return guard_cooldown
 
 
 def make_modifier_lucky_hour():
     async def modifier_lucky_hour(
-        user_id: int, chat_id: int, delta: int, result: SpinResult,
+        user_id: int,
+        chat_id: int,
+        delta: int,
+        result: SpinResult,
     ) -> int:
         if delta <= 0:
             return delta
         from datetime import datetime
+
         from bot.domain.tz import TZ_MSK
+
         now = datetime.now(TZ_MSK)
         if LUCKY_HOUR_START <= now.hour < LUCKY_HOUR_END:
             return int(delta * LUCKY_MULTIPLIER)
         return delta
+
     return modifier_lucky_hour
 
 
 def make_modifier_progressive_jackpot(store: RedisStore):
     async def modifier_progressive_jackpot(
-        user_id: int, chat_id: int, delta: int, result: SpinResult,
+        user_id: int,
+        chat_id: int,
+        delta: int,
+        result: SpinResult,
     ) -> int:
         bet = result.bet
         contribution = int(bet * JACKPOT_CONTRIBUTION)
@@ -62,6 +73,7 @@ def make_modifier_progressive_jackpot(store: RedisStore):
             return delta + pool
 
         return delta
+
     return modifier_progressive_jackpot
 
 

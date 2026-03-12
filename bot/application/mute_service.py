@@ -1,8 +1,8 @@
 from datetime import datetime
-from bot.domain.tz import TZ_MSK
 
-from bot.domain.entities import MuteEntry
 from bot.application.interfaces.mute_repository import IMuteRepository
+from bot.domain.entities import MuteEntry
+from bot.domain.tz import TZ_MSK
 
 
 class MuteService:

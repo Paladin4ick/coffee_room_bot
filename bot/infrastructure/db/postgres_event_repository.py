@@ -2,8 +2,8 @@ from datetime import datetime
 
 import asyncpg
 
-from bot.domain.entities import Direction, ScoreEvent
 from bot.application.interfaces.event_repository import IEventRepository
+from bot.domain.entities import Direction, ScoreEvent
 
 
 class PostgresEventRepository(IEventRepository):

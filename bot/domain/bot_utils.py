@@ -15,9 +15,7 @@ def is_admin(username: str | None, admins: list[str]) -> bool:
     return username.lower() in admins
 
 
-_DURATION_PATTERN = re.compile(
-    r'^(?:(\d+)[dд])?(?:(\d+)[hч])?(?:(\d+)[mм])?(?:(\d+)[sс])?$'
-)
+_DURATION_PATTERN = re.compile(r"^(?:(\d+)[dд])?(?:(\d+)[hч])?(?:(\d+)[mм])?(?:(\d+)[sс])?$")
 
 
 def parse_duration(arg: str) -> int | None:

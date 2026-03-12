@@ -80,9 +80,7 @@ class GiveawayService:
         winner_entities: list[GiveawayWinner] = []
         winners_with_prizes: list[tuple[int, int]] = []
 
-        for position, (user_id, prize) in enumerate(
-            zip(winner_ids, giveaway.prizes), start=1
-        ):
+        for position, (user_id, prize) in enumerate(zip(winner_ids, giveaway.prizes), start=1):
             winner_entities.append(
                 GiveawayWinner(
                     giveaway_id=giveaway_id,

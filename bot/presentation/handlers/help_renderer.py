@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from bot.infrastructure.config_loader import AppConfig, load_help_config
+from bot.infrastructure.config_loader import AppConfig
 from bot.infrastructure.message_formatter import MessageFormatter
 
 
@@ -39,9 +39,9 @@ class HelpRenderer:
 
     def back_kb(self, uid: int) -> InlineKeyboardMarkup:
         label = self._cfg.get("back_button", "⬅️ Назад")
-        return InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=label, callback_data=_cb("main", uid))]
-        ])
+        return InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text=label, callback_data=_cb("main", uid))]]
+        )
 
     # ── Тексты ──────────────────────────────────────────────────────
 
@@ -101,9 +101,12 @@ class HelpRenderer:
                 sign = f"+{weight}" if weight > 0 else str(weight)
                 lines_yaml.append(f"  {emoji} → {sign} {p.pluralize(abs(weight))}")
             return (
-                s["header"] + "\n\n"
-                + s["intro"].strip() + "\n\n"
-                + "\n".join(lines_yaml) + "\n\n"
+                s["header"]
+                + "\n\n"
+                + s["intro"].strip()
+                + "\n\n"
+                + "\n".join(lines_yaml)
+                + "\n\n"
                 + s["footer"].strip()
             )
 
@@ -130,15 +133,12 @@ class HelpRenderer:
 
         if section == "tag":
             rows = [_fmt(r) for r in s.get("rows", [])]
-            return (
-                s["header"] + "\n\n"
-                + "\n".join(rows) + "\n\n"
-                + s["clear_note"]
-            )
+            return s["header"] + "\n\n" + "\n".join(rows) + "\n\n" + s["clear_note"]
 
         if section == "bj":
             lines = [
-                s["header"], "",
+                s["header"],
+                "",
                 _fmt(s["bet_row"]),
             ]
             lines += s.get("rules", [])

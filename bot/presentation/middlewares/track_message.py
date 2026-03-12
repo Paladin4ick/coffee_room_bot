@@ -3,18 +3,18 @@ from __future__ import annotations
 import logging
 import random
 from datetime import datetime
-from bot.domain.tz import TZ_MSK
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
-from aiogram.types import Message, TelegramObject, ReactionTypeEmoji
+from aiogram.types import Message, ReactionTypeEmoji, TelegramObject
 from dishka import AsyncContainer
 
-from bot.domain.entities import User
-from bot.application.interfaces.user_repository import IUserRepository
 from bot.application.interfaces.message_repository import IMessageRepository, MessageInfo
+from bot.application.interfaces.user_repository import IUserRepository
 from bot.application.score_service import ScoreService
+from bot.domain.entities import User
 from bot.domain.reaction_registry import ReactionRegistry
+from bot.domain.tz import TZ_MSK
 from bot.infrastructure.config_loader import AppConfig
 
 logger = logging.getLogger(__name__)
@@ -76,10 +76,7 @@ class TrackMessageMiddleware(BaseMiddleware):
             return
 
         registry = await container.get(ReactionRegistry)
-        reactions = [
-            (emoji, r) for emoji, r in registry._reactions.items()
-            if not cfg.positive_only or r.weight > 0
-        ]
+        reactions = [(emoji, r) for emoji, r in registry._reactions.items() if not cfg.positive_only or r.weight > 0]
         if not reactions:
             return
 
@@ -100,11 +97,13 @@ class TrackMessageMiddleware(BaseMiddleware):
         # затем применяем реакцию без лимитов (бот не ограничен).
         user_repo = await container.get(IUserRepository)
         bot_info = await message.bot.get_me()
-        await user_repo.upsert(User(
-            id=message.bot.id,
-            username=bot_info.username,
-            full_name=bot_info.full_name,
-        ))
+        await user_repo.upsert(
+            User(
+                id=message.bot.id,
+                username=bot_info.username,
+                full_name=bot_info.full_name,
+            )
+        )
 
         score_service = await container.get(ScoreService)
         result = await score_service.apply_reaction_no_limits(
@@ -115,5 +114,7 @@ class TrackMessageMiddleware(BaseMiddleware):
         )
         logger.debug(
             "auto_react: %s on msg %d — applied=%s",
-            emoji, message.message_id, result.applied,
+            emoji,
+            message.message_id,
+            result.applied,
         )

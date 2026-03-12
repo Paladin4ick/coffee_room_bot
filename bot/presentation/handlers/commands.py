@@ -12,13 +12,13 @@ from aiogram.types import (
 from cachetools import TTLCache
 from dishka.integrations.aiogram import FromDishka, inject
 
-from bot.application.score_service import ScoreService
-from bot.application.leaderboard_service import LeaderboardService
 from bot.application.history_service import HistoryService
 from bot.application.interfaces.user_repository import IUserRepository
+from bot.application.leaderboard_service import LeaderboardService
+from bot.application.score_service import ScoreService
+from bot.domain.tz import to_msk
 from bot.infrastructure.config_loader import AppConfig
 from bot.infrastructure.message_formatter import MessageFormatter, user_link
-from bot.domain.tz import to_msk
 from bot.presentation.utils import NO_PREVIEW
 
 router = Router(name="commands")
@@ -64,7 +64,9 @@ async def cmd_score(
         display_name = user_link(message.from_user.username, message.from_user.full_name or "", message.from_user.id)
     user_id = target_user.id if target_user else message.from_user.id  # type: ignore[union-attr]
     score = await score_service.get_score(user_id, chat_id)
-    await message.reply(formatter.score_info(display_name, score.value), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+    await message.reply(
+        formatter.score_info(display_name, score.value), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW
+    )
 
 
 @router.message(Command("top"))
@@ -111,15 +113,17 @@ async def cmd_history(
     for e in events:
         actor = await user_repo.get_by_id(e.actor_id)
         target = await user_repo.get_by_id(e.target_id)
-        event_dicts.append({
-            "date": to_msk(e.created_at).strftime("%d.%m %H:%M") if e.created_at else "",
-            "actor": user_link(actor.username, actor.full_name, actor.id) if actor else str(e.actor_id),
-            "target": user_link(target.username, target.full_name, target.id) if target else str(e.target_id),
-            "emoji": e.emoji,
-            "delta": e.delta,
-        })
+        event_dicts.append(
+            {
+                "date": to_msk(e.created_at).strftime("%d.%m %H:%M") if e.created_at else "",
+                "actor": user_link(actor.username, actor.full_name, actor.id) if actor else str(e.actor_id),
+                "target": user_link(target.username, target.full_name, target.id) if target else str(e.target_id),
+                "emoji": e.emoji,
+                "delta": e.delta,
+            }
+        )
     page_size = config.system.history_page_size
-    pages = [event_dicts[i:i + page_size] for i in range(0, max(1, len(event_dicts)), page_size)]
+    pages = [event_dicts[i : i + page_size] for i in range(0, max(1, len(event_dicts)), page_size)]
     _history_pages[(chat_id, uid)] = pages
     text = formatter.history(pages[0], config.history.retention_days)
     kb = _history_kb(0, len(pages), chat_id, uid)
@@ -165,7 +169,9 @@ async def cb_history(
     text = formatter.history(pages[page], config.history.retention_days)
     kb = _history_kb(page, len(pages), chat_id, uid)
     try:
-        await callback.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb, link_preview_options=NO_PREVIEW)
+        await callback.message.edit_text(
+            text, parse_mode=ParseMode.HTML, reply_markup=kb, link_preview_options=NO_PREVIEW
+        )
     except Exception:
         pass
     await safe_answer()
@@ -271,20 +277,25 @@ async def cmd_uhistory(
     for e in events:
         actor = await user_repo.get_by_id(e.actor_id)
         tgt = await user_repo.get_by_id(e.target_id)
-        event_dicts.append({
-            "date": to_msk(e.created_at).strftime("%d.%m %H:%M") if e.created_at else "",
-            "actor": user_link(actor.username, actor.full_name, actor.id) if actor else str(e.actor_id),
-            "target": user_link(tgt.username, tgt.full_name, tgt.id) if tgt else str(e.target_id),
-            "emoji": e.emoji,
-            "delta": e.delta,
-        })
+        event_dicts.append(
+            {
+                "date": to_msk(e.created_at).strftime("%d.%m %H:%M") if e.created_at else "",
+                "actor": user_link(actor.username, actor.full_name, actor.id) if actor else str(e.actor_id),
+                "target": user_link(tgt.username, tgt.full_name, tgt.id) if tgt else str(e.target_id),
+                "emoji": e.emoji,
+                "delta": e.delta,
+            }
+        )
 
     page_size = config.system.history_page_size
-    pages = [event_dicts[i:i + page_size] for i in range(0, max(1, len(event_dicts)), page_size)]
+    pages = [event_dicts[i : i + page_size] for i in range(0, max(1, len(event_dicts)), page_size)]
     _uhistory_pages[(chat_id, uid, target.id)] = pages
 
     rows = [formatter._t["history_row"].format(**e) for e in pages[0]]
-    title = f"📋 История операций: {target_link}\n<i>За последние {config.history.retention_days} дн., всего {len(events)} событий</i>"
+    title = (
+        f"📋 История операций: {target_link}\n"
+        f"<i>За последние {config.history.retention_days} дн., всего {len(events)} событий</i>"
+    )
     body = "\n".join(rows)
     text = f"{title}\n<blockquote expandable>{body}</blockquote>"
 
@@ -338,13 +349,21 @@ async def cb_uhistory(
     total_events = sum(len(p) for p in pages)
 
     rows = [formatter._t["history_row"].format(**e) for e in pages[page]]
-    title = f"📋 История операций: {target_link}\n<i>За последние {config.history.retention_days} дн., всего {total_events} событий</i>"
+    title = (
+        f"📋 История операций: {target_link}\n"
+        f"<i>За последние {config.history.retention_days} дн., всего {total_events} событий</i>"
+    )
     body = "\n".join(rows)
     text = f"{title}\n<blockquote expandable>{body}</blockquote>"
 
     kb = _uhistory_kb(page, len(pages), chat_id, uid, target_id)
     try:
-        await callback.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb, link_preview_options=NO_PREVIEW)
+        await callback.message.edit_text(
+            text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb,
+            link_preview_options=NO_PREVIEW,
+        )
     except Exception:
         pass
     await safe_answer()

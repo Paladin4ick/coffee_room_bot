@@ -1,6 +1,6 @@
 """Центральная временная зона проекта: GMT+3 (Москва)."""
 
-from datetime import timezone, timedelta
+from datetime import timedelta, timezone
 
 TZ_MSK = timezone(timedelta(hours=3), name="MSK")
 
@@ -8,6 +8,7 @@ TZ_MSK = timezone(timedelta(hours=3), name="MSK")
 def now_msk():
     """Текущее время в GMT+3."""
     from datetime import datetime
+
     return datetime.now(TZ_MSK)
 
 

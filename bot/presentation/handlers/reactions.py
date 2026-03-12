@@ -6,10 +6,10 @@ from aiogram import Router
 from aiogram.types import MessageReactionUpdated, ReactionTypeEmoji
 from dishka.integrations.aiogram import FromDishka, inject
 
-from bot.domain.entities import User
-from bot.domain.emoji_utils import normalize_emoji
-from bot.application.score_service import ScoreService
 from bot.application.interfaces.user_repository import IUserRepository
+from bot.application.score_service import ScoreService
+from bot.domain.emoji_utils import normalize_emoji
+from bot.domain.entities import User
 
 logger = logging.getLogger(__name__)
 router = Router(name="reactions")
@@ -56,7 +56,11 @@ async def on_reaction_changed(
         if result.applied:
             logger.debug(
                 "Reaction %s by %d on msg %d: delta=%+d, new=%d",
-                emoji, actor.id, message_id, result.delta, result.new_value,
+                emoji,
+                actor.id,
+                message_id,
+                result.delta,
+                result.new_value,
             )
 
     for emoji in removed:
@@ -69,7 +73,11 @@ async def on_reaction_changed(
         if result.applied:
             logger.debug(
                 "Reaction %s removed by %d on msg %d: delta=%+d, new=%d",
-                emoji, actor.id, message_id, result.delta, result.new_value,
+                emoji,
+                actor.id,
+                message_id,
+                result.delta,
+                result.new_value,
             )
 
 

@@ -1,8 +1,12 @@
+import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from bot.domain.tz import TZ_MSK
-import time
 
+from bot.application.interfaces.daily_limits_repository import IDailyLimitsRepository
+from bot.application.interfaces.event_repository import IEventRepository
+from bot.application.interfaces.message_repository import IMessageRepository
+from bot.application.interfaces.score_repository import IScoreRepository
+from bot.domain.emoji_utils import normalize_emoji
 from bot.domain.entities import (
     ApplyResult,
     Direction,
@@ -11,12 +15,7 @@ from bot.domain.entities import (
     ScoreEvent,
 )
 from bot.domain.reaction_registry import ReactionRegistry
-from bot.domain.emoji_utils import normalize_emoji
-
-from bot.application.interfaces.score_repository import IScoreRepository
-from bot.application.interfaces.event_repository import IEventRepository
-from bot.application.interfaces.daily_limits_repository import IDailyLimitsRepository
-from bot.application.interfaces.message_repository import IMessageRepository
+from bot.domain.tz import TZ_MSK
 
 # Эмодзи-маркеры для специальных действий в истории
 SPECIAL_EMOJI = {
@@ -43,9 +42,9 @@ class SpendResult:
 class TransferResult:
     success: bool
     amount: int = 0
-    sender_balance: int = 0    # баланс отправителя после перевода
+    sender_balance: int = 0  # баланс отправителя после перевода
     receiver_balance: int = 0  # баланс получателя после перевода
-    current_balance: int = 0   # текущий баланс при ошибке «недостаточно»
+    current_balance: int = 0  # текущий баланс при ошибке «недостаточно»
 
 
 class ScoreService:
@@ -217,7 +216,12 @@ class ScoreService:
         return score
 
     async def set_score(
-        self, user_id: int, chat_id: int, value: int, *, admin_id: int,
+        self,
+        user_id: int,
+        chat_id: int,
+        value: int,
+        *,
+        admin_id: int,
     ) -> int:
         """Админская установка счёта в конкретное значение."""
         old = await self._score_repo.get(user_id, chat_id)
@@ -226,13 +230,21 @@ class ScoreService:
         delta = new_value - old_value
         if delta != 0:
             await self._save_special_event(
-                admin_id, user_id, chat_id, delta,
+                admin_id,
+                user_id,
+                chat_id,
+                delta,
                 SPECIAL_EMOJI["reset"] if value == 0 else SPECIAL_EMOJI["set"],
             )
         return new_value
 
     async def add_score(
-        self, user_id: int, chat_id: int, delta: int, *, admin_id: int,
+        self,
+        user_id: int,
+        chat_id: int,
+        delta: int,
+        *,
+        admin_id: int,
     ) -> int:
         """Админское изменение счёта на delta."""
         new_value = await self._score_repo.add_delta(user_id, chat_id, delta)
@@ -261,7 +273,11 @@ class ScoreService:
         new_balance = await self._score_repo.add_delta(actor_id, chat_id, -cost)
 
         await self._save_special_event(
-            actor_id, target_id, chat_id, -cost, emoji or SPECIAL_EMOJI["mute"],
+            actor_id,
+            target_id,
+            chat_id,
+            -cost,
+            emoji or SPECIAL_EMOJI["mute"],
         )
 
         return SpendResult(success=True, cost=cost, new_balance=new_balance)

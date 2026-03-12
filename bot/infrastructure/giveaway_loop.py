@@ -2,9 +2,9 @@ import asyncio
 import logging
 from datetime import datetime
 
-from bot.domain.tz import TZ_MSK
-
 from aiogram import Bot
+
+from bot.domain.tz import TZ_MSK
 
 logger = logging.getLogger(__name__)
 

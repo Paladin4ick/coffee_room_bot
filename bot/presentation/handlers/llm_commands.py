@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import logging
 import re
 from urllib.parse import urlparse
@@ -127,8 +126,10 @@ async def cmd_llm(
     thinking = await message.reply(formatter._t["llm_thinking"])
     try:
         result = await llm_service.ask(
-            message.from_user.id, message.chat.id,
-            message.from_user.username, command.args,
+            message.from_user.id,
+            message.chat.id,
+            message.from_user.username,
+            command.args,
         )
         await _send_llm_response(thinking, result)
     except RateLimitExceeded:
@@ -165,8 +166,10 @@ async def cmd_search(
     thinking = await message.reply(formatter._t["search_thinking"])
     try:
         result = await llm_service.search_and_answer(
-            message.from_user.id, message.chat.id,
-            message.from_user.username, command.args,
+            message.from_user.id,
+            message.chat.id,
+            message.from_user.username,
+            command.args,
         )
         await _send_llm_response(thinking, result)
     except RateLimitExceeded:
@@ -203,8 +206,10 @@ async def cmd_search_debug(
     thinking = await message.reply(formatter._t["search_thinking"])
     try:
         result = await llm_service.search_and_answer(
-            message.from_user.id, message.chat.id,
-            message.from_user.username, command.args,
+            message.from_user.id,
+            message.chat.id,
+            message.from_user.username,
+            command.args,
             debug=True,
         )
         await _send_llm_response(thinking, result)

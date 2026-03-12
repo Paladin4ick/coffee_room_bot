@@ -1,7 +1,7 @@
 import asyncpg
 
-from bot.domain.entities import Score
 from bot.application.interfaces.score_repository import IScoreRepository
+from bot.domain.entities import Score
 
 
 class PostgresScoreRepository(IScoreRepository):
@@ -60,7 +60,4 @@ class PostgresScoreRepository(IScoreRepository):
             chat_id,
             limit,
         )
-        return [
-            Score(user_id=r["user_id"], chat_id=r["chat_id"], value=r["value"])
-            for r in rows
-        ]
+        return [Score(user_id=r["user_id"], chat_id=r["chat_id"], value=r["value"]) for r in rows]

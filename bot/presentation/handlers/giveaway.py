@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+import logging
 import random
 import re
 from datetime import datetime, timedelta
-
-from bot.domain.tz import TZ_MSK
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -22,14 +21,13 @@ from dishka.integrations.aiogram import FromDishka, inject
 from bot.application.giveaway_service import GiveawayService
 from bot.application.interfaces.user_repository import IUserRepository
 from bot.application.mute_service import MuteService
+from bot.domain.bot_utils import is_admin, parse_duration
 from bot.domain.entities import MuteEntry, User
 from bot.domain.giveaway_entities import Giveaway
 from bot.domain.pluralizer import ScorePluralizer
-from bot.domain.bot_utils import is_admin, parse_duration
+from bot.domain.tz import TZ_MSK
 from bot.infrastructure.config_loader import AppConfig
 from bot.infrastructure.redis_store import RedisStore
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +78,7 @@ def _format_end_time(ends_at: datetime | None) -> str:
 
 
 # ─── /giveaway ──────────────────────────────────────────────────────────────
+
 
 @router.message(Command("giveaway"))
 @inject
@@ -139,6 +138,7 @@ async def cmd_giveaway(
 
 # ─── /giveaway_end ──────────────────────────────────────────────────────────
 
+
 @router.message(Command("giveaway_end"))
 @inject
 async def cmd_giveaway_end(
@@ -182,6 +182,7 @@ async def cmd_giveaway_end(
 
 # ─── Callback: кнопка «Участвовать» ─────────────────────────────────────────
 
+
 @router.callback_query(F.data.startswith("giveaway:join:"))
 @inject
 async def cb_join(
@@ -193,11 +194,13 @@ async def cb_join(
     user_id = cb.from_user.id
 
     # Upsert пользователя — иначе FK на scores/users упадёт при начислении баллов
-    await user_repo.upsert(User(
-        id=user_id,
-        username=cb.from_user.username,
-        full_name=cb.from_user.full_name,
-    ))
+    await user_repo.upsert(
+        User(
+            id=user_id,
+            username=cb.from_user.username,
+            full_name=cb.from_user.full_name,
+        )
+    )
 
     joined = await service.join(giveaway_id, user_id)
     if not joined:
@@ -214,6 +217,7 @@ async def cb_join(
 
 
 # ─── Общая функция публикации результатов ───────────────────────────────────
+
 
 async def _post_results(
     bot: Bot,
@@ -312,6 +316,7 @@ async def cmd_mute_roulette(
 
     chat_id = message.chat.id
     import time
+
     ends_at = time.time() + collect_secs
     mute_minutes = mute_secs // 60
 
@@ -406,7 +411,10 @@ async def cmd_mute_roulette_end(
 
 
 async def _finish_mute_roulette(
-    bot: Bot, chat_id: int, data: dict, mute_service: MuteService,
+    bot: Bot,
+    chat_id: int,
+    data: dict,
+    mute_service: MuteService,
 ) -> None:
     """Завершение мут-гивэвея: выбор проигравших и применение мутов."""
     participants = data["participants"]
@@ -422,11 +430,20 @@ async def _finish_mute_roulette(
     until = datetime.now(TZ_MSK) + timedelta(minutes=mute_minutes)
 
     _ADMIN_PERM_FIELDS = (
-        "can_manage_chat", "can_change_info", "can_delete_messages",
-        "can_invite_users", "can_restrict_members", "can_pin_messages",
-        "can_manage_video_chats", "can_promote_members", "can_post_messages",
-        "can_edit_messages", "can_post_stories", "can_edit_stories",
-        "can_delete_stories", "can_manage_topics",
+        "can_manage_chat",
+        "can_change_info",
+        "can_delete_messages",
+        "can_invite_users",
+        "can_restrict_members",
+        "can_pin_messages",
+        "can_manage_video_chats",
+        "can_promote_members",
+        "can_post_messages",
+        "can_edit_messages",
+        "can_post_stories",
+        "can_edit_stories",
+        "can_delete_stories",
+        "can_manage_topics",
     )
 
     lines = [f"🎰 <b>Мут-гивэвей завершён!</b> Участников: {len(participants)}\n"]
@@ -463,14 +480,16 @@ async def _finish_mute_roulette(
                 permissions=ChatPermissions(can_send_messages=False),
                 until_date=until,
             )
-            await mute_service.save_mute(MuteEntry(
-                user_id=user_id,
-                chat_id=chat_id,
-                muted_by=creator_id,
-                until_at=until,
-                was_admin=was_admin,
-                admin_permissions=admin_perms,
-            ))
+            await mute_service.save_mute(
+                MuteEntry(
+                    user_id=user_id,
+                    chat_id=chat_id,
+                    muted_by=creator_id,
+                    until_at=until,
+                    was_admin=was_admin,
+                    admin_permissions=admin_perms,
+                )
+            )
             lines.append(f"🔇 {name} — мут {mute_minutes} мин")
         except TelegramBadRequest as e:
             err = str(e).lower()

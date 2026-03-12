@@ -24,7 +24,7 @@ from bot.application.score_service import ScoreService
 from bot.infrastructure.config_loader import AppConfig
 from bot.infrastructure.message_formatter import MessageFormatter
 from bot.infrastructure.redis_store import RedisStore
-from bot.presentation.utils import schedule_delete, NO_PREVIEW
+from bot.presentation.utils import NO_PREVIEW, schedule_delete
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,7 @@ router = Router(name="blackjack")
 
 
 # ── Inline-клавиатура ────────────────────────────────────────────
+
 
 def _bj_kb(user_id: int) -> InlineKeyboardMarkup:
     """Клавиатура с user_id в callback_data для защиты от чужих нажатий."""
@@ -46,6 +47,7 @@ def _bj_kb(user_id: int) -> InlineKeyboardMarkup:
 
 
 # ── Вспомогательные ─────────────────────────────────────────────
+
 
 def _render_table(
     rnd: BlackjackRound,
@@ -72,11 +74,11 @@ def _render_table(
 
 _RESULT_TEXT = {
     "player_blackjack": "🎰 Блекджек! Ты получаешь {win} {sw}!",
-    "player_win":       "🏆 Ты выиграл {win} {sw}!",
-    "dealer_bust":      "🏆 Дилер перебрал! Ты выиграл {win} {sw}!",
-    "dealer_win":       "😔 Дилер выиграл. Ты потерял {loss} {sw}.",
-    "player_bust":      "💥 Перебор! Ты потерял {loss} {sw}.",
-    "push":             "🤝 Ничья. Ставка возвращена.",
+    "player_win": "🏆 Ты выиграл {win} {sw}!",
+    "dealer_bust": "🏆 Дилер перебрал! Ты выиграл {win} {sw}!",
+    "dealer_win": "😔 Дилер выиграл. Ты потерял {loss} {sw}.",
+    "player_bust": "💥 Перебор! Ты потерял {loss} {sw}.",
+    "push": "🤝 Ничья. Ставка возвращена.",
 }
 
 
@@ -91,6 +93,7 @@ def _result_line(rnd: BlackjackRound, pluralizer) -> str:
 
 
 # ── /help_bj ─────────────────────────────────────────────────────
+
 
 @router.message(Command("help_bj"))
 @inject
@@ -134,6 +137,7 @@ async def cmd_help_bj(
 
 # ── /bj <ставка> ────────────────────────────────────────────────
 
+
 @router.message(Command("bj"))
 @inject
 async def cmd_blackjack(
@@ -159,15 +163,15 @@ async def cmd_blackjack(
     bjc = config.blackjack
     window_seconds = bjc.window_hours * 3600
     wait = await store.bj_history_check(
-        user_id, chat_id, bjc.max_games_per_window, window_seconds,
+        user_id,
+        chat_id,
+        bjc.max_games_per_window,
+        window_seconds,
     )
     if wait is not None:
         total = int(wait)
         mins, secs = divmod(total, 60)
-        await message.reply(
-            f"⏳ Лимит: {bjc.max_games_per_window} игр в час. "
-            f"Следующая игра через {mins}м {secs}с."
-        )
+        await message.reply(f"⏳ Лимит: {bjc.max_games_per_window} игр в час. Следующая игра через {mins}м {secs}с.")
         return
 
     # Парсим ставку
@@ -176,8 +180,7 @@ async def cmd_blackjack(
 
     if not command.args:
         await message.reply(
-            f"Использование: /bj &lt;ставка&gt;\n"
-            f"Ставка: от {min_bet} до {max_bet} {formatter._p.pluralize(max_bet)}.",
+            f"Использование: /bj &lt;ставка&gt;\nСтавка: от {min_bet} до {max_bet} {formatter._p.pluralize(max_bet)}.",
             parse_mode=ParseMode.HTML,
         )
         return
@@ -189,17 +192,13 @@ async def cmd_blackjack(
         return
 
     if bet < min_bet or bet > max_bet:
-        await message.reply(
-            f"Ставка: от {min_bet} до {max_bet} {formatter._p.pluralize(max_bet)}."
-        )
+        await message.reply(f"Ставка: от {min_bet} до {max_bet} {formatter._p.pluralize(max_bet)}.")
         return
 
     # Проверяем баланс
     score = await score_service.get_score(user_id, chat_id)
     if score.value < bet:
-        await message.reply(
-            f"Недостаточно баллов. У тебя: {score.value} {formatter._p.pluralize(score.value)}."
-        )
+        await message.reply(f"Недостаточно баллов. У тебя: {score.value} {formatter._p.pluralize(score.value)}.")
         return
 
     # Записываем игру в sliding window и создаём раунд
@@ -212,7 +211,10 @@ async def cmd_blackjack(
         delta = rnd.payout_delta()
         if delta != 0:
             await score_service.add_score(
-                user_id, chat_id, delta, admin_id=user_id,
+                user_id,
+                chat_id,
+                delta,
+                admin_id=user_id,
             )
         text = _render_table(
             rnd,
@@ -225,10 +227,7 @@ async def cmd_blackjack(
 
     # Сохраняем в Redis и показываем стол с кнопками
     await store.bj_set(user_id, chat_id, rnd)
-    text = (
-        f"🃏 <b>Блекджек</b> — ставка {bet} {formatter._p.pluralize(bet)}\n\n"
-        + _render_table(rnd)
-    )
+    text = f"🃏 <b>Блекджек</b> — ставка {bet} {formatter._p.pluralize(bet)}\n\n" + _render_table(rnd)
     game_msg = await message.reply(
         text,
         parse_mode=ParseMode.HTML,
@@ -239,6 +238,7 @@ async def cmd_blackjack(
 
 
 # ── Callback: Hit ────────────────────────────────────────────────
+
 
 @router.callback_query(F.data.startswith("bj_hit:"))
 @inject
@@ -268,7 +268,10 @@ async def cb_hit(
         delta = rnd.payout_delta()
         if delta != 0:
             await score_service.add_score(
-                user_id, chat_id, delta, admin_id=user_id,
+                user_id,
+                chat_id,
+                delta,
+                admin_id=user_id,
             )
         await store.bj_delete(user_id, chat_id)
         text = _render_table(
@@ -288,10 +291,7 @@ async def cb_hit(
 
     # Продолжаем — сохраняем обновлённое состояние
     await store.bj_set(user_id, chat_id, rnd)
-    text = (
-        f"🃏 <b>Блекджек</b> — ставка {rnd.bet} {formatter._p.pluralize(rnd.bet)}\n\n"
-        + _render_table(rnd)
-    )
+    text = f"🃏 <b>Блекджек</b> — ставка {rnd.bet} {formatter._p.pluralize(rnd.bet)}\n\n" + _render_table(rnd)
     await callback.message.edit_text(
         text,
         parse_mode=ParseMode.HTML,
@@ -302,6 +302,7 @@ async def cb_hit(
 
 
 # ── Callback: Stand ──────────────────────────────────────────────
+
 
 @router.callback_query(F.data.startswith("bj_stand:"))
 @inject
@@ -330,7 +331,10 @@ async def cb_stand(
     delta = rnd.payout_delta()
     if delta != 0:
         await score_service.add_score(
-            user_id, chat_id, delta, admin_id=user_id,
+            user_id,
+            chat_id,
+            delta,
+            admin_id=user_id,
         )
     await store.bj_delete(user_id, chat_id)
 

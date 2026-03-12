@@ -1,5 +1,5 @@
-from bot.domain.entities import Score
 from bot.application.interfaces.score_repository import IScoreRepository
+from bot.domain.entities import Score
 
 
 class LeaderboardService:

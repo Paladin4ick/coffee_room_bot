@@ -74,10 +74,12 @@ class AiTunnelClient:
             finish_reason = choice_raw.get("finish_reason")
             choice = choice_raw["message"]
             usage = data.get("usage", {})
-            logger.info("LLM finish_reason=%s, content=%s, tool_calls=%s",
-                         finish_reason,
-                         repr((choice.get("content") or "")[:100]),
-                         len(choice.get("tool_calls", [])))
+            logger.info(
+                "LLM finish_reason=%s, content=%s, tool_calls=%s",
+                finish_reason,
+                repr((choice.get("content") or "")[:100]),
+                len(choice.get("tool_calls", [])),
+            )
 
             if finish_reason == "error" and attempt < self._MAX_RETRIES - 1:
                 logger.warning("LLM returned error, retrying (attempt %d)", attempt + 1)
@@ -86,11 +88,13 @@ class AiTunnelClient:
 
         tool_calls: list[ToolCall] = []
         for tc in choice.get("tool_calls", []):
-            tool_calls.append(ToolCall(
-                id=tc["id"],
-                name=tc["function"]["name"],
-                arguments=tc["function"]["arguments"],
-            ))
+            tool_calls.append(
+                ToolCall(
+                    id=tc["id"],
+                    name=tc["function"]["name"],
+                    arguments=tc["function"]["arguments"],
+                )
+            )
 
         return LlmResponse(
             text=choice.get("content") or "",

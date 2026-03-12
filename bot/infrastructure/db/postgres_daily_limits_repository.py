@@ -2,8 +2,8 @@ from datetime import date
 
 import asyncpg
 
-from bot.domain.entities import DailyLimits
 from bot.application.interfaces.daily_limits_repository import IDailyLimitsRepository
+from bot.domain.entities import DailyLimits
 
 
 class PostgresDailyLimitsRepository(IDailyLimitsRepository):

@@ -1,7 +1,7 @@
 import asyncpg
 
-from bot.domain.entities import User
 from bot.application.interfaces.user_repository import IUserRepository
+from bot.domain.entities import User
 
 
 class PostgresUserRepository(IUserRepository):

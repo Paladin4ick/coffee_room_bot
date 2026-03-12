@@ -7,13 +7,12 @@ import logging
 from aiogram import Bot, Router
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandObject
-from aiogram.types import LinkPreviewOptions, Message
+from aiogram.types import Message
 from dishka.integrations.aiogram import FromDishka, inject
 
-from bot.application.slots_service import SlotsService, SlotsConfig, SpinOutcome
-from bot.infrastructure.config_loader import AppConfig
+from bot.application.slots_service import SlotsConfig, SlotsService, SpinOutcome
 from bot.infrastructure.message_formatter import MessageFormatter
-from bot.presentation.utils import schedule_delete, NO_PREVIEW
+from bot.presentation.utils import NO_PREVIEW, schedule_delete
 
 logger = logging.getLogger(__name__)
 router = Router(name="slots")
@@ -24,10 +23,10 @@ def _render_reels(reels: list[str]) -> str:
 
 
 _OUTCOME_TEXT = {
-    SpinOutcome.JACKPOT:   "🎰 ДЖЕКПОТ! Ты выиграл {win} {sw}!",
-    SpinOutcome.WIN:       "🏆 Выигрыш! +{win} {sw}!",
+    SpinOutcome.JACKPOT: "🎰 ДЖЕКПОТ! Ты выиграл {win} {sw}!",
+    SpinOutcome.WIN: "🏆 Выигрыш! +{win} {sw}!",
     SpinOutcome.NEAR_MISS: "😬 Почти! Потерял {loss} {sw}.",
-    SpinOutcome.LOSS:      "💸 Мимо. Потерял {loss} {sw}.",
+    SpinOutcome.LOSS: "💸 Мимо. Потерял {loss} {sw}.",
 }
 
 
@@ -52,10 +51,9 @@ async def cmd_slots(
             f"🎰 <b>Слоты</b>\n\n"
             f"Использование: /slots &lt;ставка&gt;\n"
             f"Ставка: от {cfg.min_bet} до {cfg.max_bet} {p.pluralize(cfg.max_bet)}\n\n"
-            f"Символы:\n" +
-            "\n".join(
-                f"  {s.emoji} × {s.multiplier:.0f} (три в ряд)"
-                for s in sorted(cfg.symbols, key=lambda x: x.multiplier)
+            f"Символы:\n"
+            + "\n".join(
+                f"  {s.emoji} × {s.multiplier:.0f} (три в ряд)" for s in sorted(cfg.symbols, key=lambda x: x.multiplier)
             ),
             parse_mode=ParseMode.HTML,
             link_preview_options=NO_PREVIEW,
@@ -76,9 +74,7 @@ async def cmd_slots(
 
     # Обработка ошибок
     if result == "invalid_bet":
-        await message.reply(
-            f"Ставка: от {cfg.min_bet} до {cfg.max_bet} {p.pluralize(cfg.max_bet)}."
-        )
+        await message.reply(f"Ставка: от {cfg.min_bet} до {cfg.max_bet} {p.pluralize(cfg.max_bet)}.")
         return
     if result == "not_enough":
         await message.reply("Недостаточно баллов.")

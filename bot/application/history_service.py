@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta
-from bot.domain.tz import TZ_MSK
 
-from bot.domain.entities import ScoreEvent
 from bot.application.interfaces.event_repository import IEventRepository
+from bot.domain.entities import ScoreEvent
+from bot.domain.tz import TZ_MSK
 
 
 class HistoryService:

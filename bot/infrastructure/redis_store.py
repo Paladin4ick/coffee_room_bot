@@ -13,11 +13,11 @@ from bot.application.blackjack_service import BlackjackRound, Card, GameResult
 logger = logging.getLogger(__name__)
 
 # Префиксы ключей
-_BJ_GAME = "bj:game:"        # bj:game:{user_id}:{chat_id}
-_BJ_HISTORY = "bj:hist:"     # bj:hist:{user_id}:{chat_id}  (sorted set)
-_SLOTS_DAILY = "slots:daily:" # slots:daily:{user_id}:{chat_id}
-_SLOTS_LAST = "slots:last:"   # slots:last:{user_id}:{chat_id}
-_JACKPOT = "slots:jackpot:"   # slots:jackpot:{chat_id}
+_BJ_GAME = "bj:game:"  # bj:game:{user_id}:{chat_id}
+_BJ_HISTORY = "bj:hist:"  # bj:hist:{user_id}:{chat_id}  (sorted set)
+_SLOTS_DAILY = "slots:daily:"  # slots:daily:{user_id}:{chat_id}
+_SLOTS_LAST = "slots:last:"  # slots:last:{user_id}:{chat_id}
+_JACKPOT = "slots:jackpot:"  # slots:jackpot:{chat_id}
 
 
 def _serialize_round(rnd: BlackjackRound) -> str:
@@ -81,7 +81,11 @@ class RedisStore:
     # ── Blackjack: история игр (sliding window) ─────────────────
 
     async def bj_history_check(
-        self, user_id: int, chat_id: int, max_games: int, window_seconds: int,
+        self,
+        user_id: int,
+        chat_id: int,
+        max_games: int,
+        window_seconds: int,
     ) -> float | None:
         """Проверить лимит. Возвращает None если можно играть, иначе секунды ожидания."""
         key = f"{_BJ_HISTORY}{user_id}:{chat_id}"
@@ -172,21 +176,28 @@ class RedisStore:
         return f"{self._MUTE_ROULETTE}{chat_id}:{roulette_id}"
 
     async def mute_roulette_create(
-        self, chat_id: int, creator_id: int, mute_minutes: int,
-        losers_count: int, ends_at: float,
+        self,
+        chat_id: int,
+        creator_id: int,
+        mute_minutes: int,
+        losers_count: int,
+        ends_at: float,
     ) -> str:
         """Создать рулетку. Возвращает уникальный roulette_id."""
         import random as _random
+
         roulette_id = str(_random.randint(10000, 99999))
         key = self._mg_key(chat_id, roulette_id)
-        data = json.dumps({
-            "roulette_id": roulette_id,
-            "creator_id": creator_id,
-            "mute_minutes": mute_minutes,
-            "losers_count": losers_count,
-            "ends_at": ends_at,
-            "participants": [],
-        })
+        data = json.dumps(
+            {
+                "roulette_id": roulette_id,
+                "creator_id": creator_id,
+                "mute_minutes": mute_minutes,
+                "losers_count": losers_count,
+                "ends_at": ends_at,
+                "participants": [],
+            }
+        )
         ttl = int(ends_at - time.time()) + 300
         await self._r.set(key, data, ex=max(ttl, 60))
         return roulette_id

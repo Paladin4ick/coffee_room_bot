@@ -9,13 +9,13 @@ from dishka.integrations.aiogram import setup_dishka
 from bot.infrastructure.config_loader import Settings, load_config
 from bot.infrastructure.di import AppProvider, RequestProvider
 from bot.infrastructure.giveaway_loop import giveaway_loop
-from bot.presentation.handlers.reactions import router as reactions_router
-from bot.presentation.handlers.commands import router as commands_router
+from bot.presentation.handlers.admin_commands import _unmute_user, create_admin_router
 from bot.presentation.handlers.blackjack import router as blackjack_router
-from bot.presentation.handlers.slots import router as slots_router
-from bot.presentation.handlers.llm_commands import router as llm_router
+from bot.presentation.handlers.commands import router as commands_router
 from bot.presentation.handlers.giveaway import router as giveaway_router
-from bot.presentation.handlers.admin_commands import create_admin_router, _unmute_user
+from bot.presentation.handlers.llm_commands import router as llm_router
+from bot.presentation.handlers.reactions import router as reactions_router
+from bot.presentation.handlers.slots import router as slots_router
 from bot.presentation.middlewares.chat_context import ChatContextMiddleware
 from bot.presentation.middlewares.track_message import TrackMessageMiddleware
 
@@ -51,7 +51,9 @@ async def unmute_loop(container, bot: Bot, interval_seconds: int) -> None:
                 mute_service = await scope.get(MuteService)
                 expired = await mute_service.get_expired_mutes()
                 for entry in expired:
-                    logger.info("Unmuting user %d in chat %d (was_admin=%s)", entry.user_id, entry.chat_id, entry.was_admin)
+                    logger.info(
+                        "Unmuting user %d in chat %d (was_admin=%s)", entry.user_id, entry.chat_id, entry.was_admin
+                    )
                     await _unmute_user(bot, mute_service, entry)
         except Exception:
             logger.exception("Unmute task failed")
@@ -59,10 +61,11 @@ async def unmute_loop(container, bot: Bot, interval_seconds: int) -> None:
 
 async def mute_roulette_loop(container, bot: Bot) -> None:
     """Фоновая задача: завершает истёкшие мут-рулетки."""
-    from bot.infrastructure.redis_store import RedisStore
-    from bot.application.mute_service import MuteService
-    from bot.presentation.handlers.giveaway import _finish_mute_roulette
     import time as _time
+
+    from bot.application.mute_service import MuteService
+    from bot.infrastructure.redis_store import RedisStore
+    from bot.presentation.handlers.giveaway import _finish_mute_roulette
 
     while True:
         await asyncio.sleep(10)
@@ -80,6 +83,7 @@ async def mute_roulette_loop(container, bot: Bot) -> None:
                     if raw is None:
                         continue
                     import json
+
                     data = json.loads(raw)
                     if data["ends_at"] <= now:
                         parts = key.split(":")
@@ -105,6 +109,7 @@ async def main() -> None:
     tg_log_handler = None
     if settings.log_chat_id:
         from bot.infrastructure.telegram_log_handler import TelegramLogHandler
+
         log_level = getattr(logging, settings.log_level.upper(), logging.ERROR)
         tg_log_handler = TelegramLogHandler(bot, settings.log_chat_id, level=log_level)
         tg_log_handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
@@ -127,7 +132,11 @@ async def main() -> None:
 
     admin_router = create_admin_router(config.admin.prefix)
     dp.include_router(admin_router)
-    logger.info("Commands: /add, /sub, /set, /reset, /op, /deop, /mute, /amute, /selfmute, /unmute, /tag, /transfer, /protect, /save, /restore, /help, /limits")
+    logger.info(
+        "Commands: /add, /sub, /set, /reset, /op, /deop, /mute,"
+        " /amute, /selfmute, /unmute, /tag, /transfer,"
+        " /protect, /save, /restore, /help, /limits"
+    )
 
     setup_dishka(container, dp)
     dp.message.outer_middleware(TrackMessageMiddleware())

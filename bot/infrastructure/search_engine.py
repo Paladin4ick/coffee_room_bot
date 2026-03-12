@@ -11,10 +11,17 @@ from bot.infrastructure.page_fetcher import fetch_page_text
 
 logger = logging.getLogger(__name__)
 
-_BLOCKED_DOMAINS = frozenset({
-    "youtube.com", "youtu.be", "rutube.ru", "vk.com", "vkvideo.ru",
-    "mvideo.ru", "citilink.ru",
-})
+_BLOCKED_DOMAINS = frozenset(
+    {
+        "youtube.com",
+        "youtu.be",
+        "rutube.ru",
+        "vk.com",
+        "vkvideo.ru",
+        "mvideo.ru",
+        "citilink.ru",
+    }
+)
 
 _SEARCH_TIMEOUT = aiohttp.ClientTimeout(total=90)
 
@@ -25,7 +32,7 @@ class SearchResult:
     url: str
     snippet: str
     content: str = ""  # извлечённый текст страницы (заполняется после fetch)
-    engine: str = ""   # google / yandex
+    engine: str = ""  # google / yandex
 
 
 class SearchEngine:
@@ -35,7 +42,10 @@ class SearchEngine:
         self._base_url = base_url.rstrip("/")
 
     async def _query_openserp(
-        self, engine: str, query: str, limit: int,
+        self,
+        engine: str,
+        query: str,
+        limit: int,
     ) -> list[SearchResult]:
         """Запрос к OpenSERP API."""
         url = f"{self._base_url}/{engine}/search"
@@ -56,12 +66,14 @@ class SearchEngine:
             r_url = item.get("url", "")
             if not r_url:
                 continue
-            results.append(SearchResult(
-                title=item.get("title", ""),
-                url=r_url,
-                snippet=item.get("description", ""),
-                engine=engine,
-            ))
+            results.append(
+                SearchResult(
+                    title=item.get("title", ""),
+                    url=r_url,
+                    snippet=item.get("description", ""),
+                    engine=engine,
+                )
+            )
         return results
 
     async def search(self, query: str, max_results: int = 5) -> list[SearchResult]:
@@ -78,7 +90,10 @@ class SearchEngine:
     # ── Search + Content Extraction ──────────────────────────────────
 
     async def search_with_content(
-        self, query: str, max_results: int = 5, max_fetch: int = 3,
+        self,
+        query: str,
+        max_results: int = 5,
+        max_fetch: int = 3,
     ) -> list[SearchResult]:
         """Поиск + извлечение контента из топ страниц через trafilatura."""
         results = await self.search(query, max_results)
@@ -110,7 +125,9 @@ class SearchEngine:
         fetched = sum(1 for r in results if r.content)
         logger.info(
             "search_with_content for %r: %d results, %d pages fetched",
-            query, len(results), fetched,
+            query,
+            len(results),
+            fetched,
         )
         return results
 

@@ -4,47 +4,44 @@ import asyncpg
 import redis.asyncio as aioredis
 from dishka import Provider, Scope, provide
 
-from bot.domain.pluralizer import ScorePluralizer
-from bot.domain.reaction_registry import ReactionRegistry
-
-from bot.application.interfaces.score_repository import IScoreRepository
-from bot.application.interfaces.event_repository import IEventRepository
+from bot.application.cleanup_service import CleanupService
+from bot.application.giveaway_service import GiveawayService
+from bot.application.history_service import HistoryService
 from bot.application.interfaces.daily_limits_repository import IDailyLimitsRepository
-from bot.application.interfaces.user_repository import IUserRepository
-from bot.application.interfaces.message_repository import IMessageRepository
-from bot.application.interfaces.mute_repository import IMuteRepository
-from bot.application.interfaces.saved_permissions_repository import ISavedPermissionsRepository
-from bot.application.interfaces.mute_protection_repository import IMuteProtectionRepository
+from bot.application.interfaces.event_repository import IEventRepository
 from bot.application.interfaces.giveaway_repository import IGiveawayRepository
 from bot.application.interfaces.llm_repository import ILlmRepository
+from bot.application.interfaces.message_repository import IMessageRepository
+from bot.application.interfaces.mute_protection_repository import IMuteProtectionRepository
+from bot.application.interfaces.mute_repository import IMuteRepository
+from bot.application.interfaces.saved_permissions_repository import ISavedPermissionsRepository
+from bot.application.interfaces.score_repository import IScoreRepository
 from bot.application.interfaces.transaction_manager import ITransactionManager
-from bot.application.score_service import ScoreService
+from bot.application.interfaces.user_repository import IUserRepository
 from bot.application.leaderboard_service import LeaderboardService
-from bot.application.history_service import HistoryService
-from bot.application.cleanup_service import CleanupService
-from bot.application.mute_service import MuteService
-from bot.application.giveaway_service import GiveawayService
-from bot.application.slots_service import SlotsService, SlotsConfig, SlotsMachine
-from bot.application.slots_custom_functions import apply_custom_functions
 from bot.application.llm_service import LlmService
-
-from bot.infrastructure.config_loader import AppConfig, Settings, load_config, load_messages, load_help_config
-from bot.infrastructure.message_formatter import MessageFormatter
+from bot.application.mute_service import MuteService
+from bot.application.score_service import ScoreService
+from bot.application.slots_custom_functions import apply_custom_functions
+from bot.application.slots_service import SlotsConfig, SlotsMachine, SlotsService
+from bot.domain.pluralizer import ScorePluralizer
+from bot.domain.reaction_registry import ReactionRegistry
 from bot.infrastructure.aitunnel_client import AiTunnelClient
-from bot.infrastructure.search_engine import SearchEngine
-from bot.infrastructure.db.transaction_manager import PostgresTransactionManager
-from bot.infrastructure.db.postgres_score_repository import PostgresScoreRepository
-from bot.infrastructure.db.postgres_event_repository import PostgresEventRepository
+from bot.infrastructure.config_loader import AppConfig, Settings, load_config, load_help_config, load_messages
 from bot.infrastructure.db.postgres_daily_limits_repository import PostgresDailyLimitsRepository
-from bot.infrastructure.db.postgres_user_repository import PostgresUserRepository
-from bot.infrastructure.db.postgres_message_repository import PostgresMessageRepository
-from bot.infrastructure.db.postgres_mute_repository import PostgresMuteRepository
-from bot.infrastructure.db.postgres_saved_permissions_repository import PostgresSavedPermissionsRepository
-from bot.infrastructure.db.postgres_mute_protection_repository import PostgresMuteProtectionRepository
+from bot.infrastructure.db.postgres_event_repository import PostgresEventRepository
 from bot.infrastructure.db.postgres_giveaway_repository import PostgresGiveawayRepository
 from bot.infrastructure.db.postgres_llm_repository import PostgresLlmRepository
+from bot.infrastructure.db.postgres_message_repository import PostgresMessageRepository
+from bot.infrastructure.db.postgres_mute_protection_repository import PostgresMuteProtectionRepository
+from bot.infrastructure.db.postgres_mute_repository import PostgresMuteRepository
+from bot.infrastructure.db.postgres_saved_permissions_repository import PostgresSavedPermissionsRepository
+from bot.infrastructure.db.postgres_score_repository import PostgresScoreRepository
+from bot.infrastructure.db.postgres_user_repository import PostgresUserRepository
+from bot.infrastructure.db.transaction_manager import PostgresTransactionManager
+from bot.infrastructure.message_formatter import MessageFormatter
 from bot.infrastructure.redis_store import RedisStore
-
+from bot.infrastructure.search_engine import SearchEngine
 from bot.presentation.handlers.help_renderer import HelpRenderer
 
 
@@ -214,7 +211,10 @@ class RequestProvider(Provider):
 
     @provide
     def get_slots_service(
-        self, machine: SlotsMachine, config: SlotsConfig, score_service: ScoreService,
+        self,
+        machine: SlotsMachine,
+        config: SlotsConfig,
+        score_service: ScoreService,
     ) -> SlotsService:
         return SlotsService(machine, config, score_service)
 

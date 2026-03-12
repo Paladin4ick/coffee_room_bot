@@ -3,8 +3,8 @@ from datetime import datetime
 
 import asyncpg
 
-from bot.domain.entities import MuteEntry
 from bot.application.interfaces.mute_repository import IMuteRepository
+from bot.domain.entities import MuteEntry
 
 
 class PostgresMuteRepository(IMuteRepository):
@@ -34,7 +34,8 @@ class PostgresMuteRepository(IMuteRepository):
 
     async def get(self, user_id: int, chat_id: int) -> MuteEntry | None:
         row = await self._conn.fetchrow(
-            "SELECT user_id, chat_id, muted_by, until_at, was_admin, admin_permissions FROM active_mutes WHERE user_id = $1 AND chat_id = $2",
+            "SELECT user_id, chat_id, muted_by, until_at, was_admin, admin_permissions "
+            "FROM active_mutes WHERE user_id = $1 AND chat_id = $2",
             user_id,
             chat_id,
         )
@@ -49,7 +50,8 @@ class PostgresMuteRepository(IMuteRepository):
 
     async def get_expired(self, now: datetime) -> list[MuteEntry]:
         rows = await self._conn.fetch(
-            "SELECT user_id, chat_id, muted_by, until_at, was_admin, admin_permissions FROM active_mutes WHERE until_at <= $1",
+            "SELECT user_id, chat_id, muted_by, until_at, was_admin, admin_permissions "
+            "FROM active_mutes WHERE until_at <= $1",
             now,
         )
         return [self._to_entity(r) for r in rows]

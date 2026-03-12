@@ -1,8 +1,8 @@
-from datetime import datetime, timedelta
-from bot.domain.tz import TZ_MSK
 import logging
+from datetime import datetime, timedelta
 
 from bot.application.interfaces.event_repository import IEventRepository
+from bot.domain.tz import TZ_MSK
 
 logger = logging.getLogger(__name__)
 

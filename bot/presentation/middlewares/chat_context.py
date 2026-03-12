@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
-from aiogram.types import Chat, Message, TelegramObject, Update
+from aiogram.types import Chat, TelegramObject
 
 
 class ChatContextMiddleware(BaseMiddleware):
