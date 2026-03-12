@@ -6,6 +6,7 @@ Telegram-бот на базе **aiogram 3**, реализующий систем
 
 ## Deploy
 p.s. лучше всего деплоить так
+p.s.s это работает -- ура
 ```sh
 ./scripts/deploy.sh --force
 ```
