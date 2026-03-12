@@ -6,6 +6,7 @@ Telegram-бот на базе **aiogram 3**, реализующий систем
 
 ## Deploy
 p.s. лучше всего деплоить так
+p.s.s. возможно просто от судо теперь запуск
 ```sh
 eval "$(ssh-agent -s)"
 ssh-add ~/.ssh/gh_key
