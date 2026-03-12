@@ -45,6 +45,7 @@ class LimitsConfig(_BaseConfig):
 class SlotsConfig(_BaseConfig):
     min_bet: int = 1
     max_bet: int = 200
+    cooldown_minutes: int = 60  # кулдаун между спинами одного пользователя
 
 
 class HistoryConfig(_BaseConfig):

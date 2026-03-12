@@ -58,6 +58,7 @@ blackjack:
 slots:
   min_bet: 1
   max_bet: 200
+  cooldown_minutes: 60      # кулдаун между спинами одного пользователя (в минутах)
 
 dice:
   min_bet: 1
