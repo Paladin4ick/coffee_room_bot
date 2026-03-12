@@ -10,14 +10,21 @@ from bot.infrastructure.config_loader import Settings, load_config
 from bot.infrastructure.di import AppProvider, RequestProvider
 from bot.infrastructure.dice_loop import dice_loop
 from bot.infrastructure.giveaway_loop import giveaway_loop
-from bot.presentation.handlers.admin_commands import _unmute_user, create_admin_router
+from bot.presentation.handlers._admin_utils import _unmute_user
+from bot.presentation.handlers.admin_score import router as admin_score_router
+from bot.presentation.handlers.admin_user import router as admin_user_router
 from bot.presentation.handlers.blackjack import router as blackjack_router
 from bot.presentation.handlers.commands import router as commands_router
 from bot.presentation.handlers.dice import router as dice_router
 from bot.presentation.handlers.giveaway import router as giveaway_router
+from bot.presentation.handlers.help import router as help_router
 from bot.presentation.handlers.llm_commands import router as llm_router
+from bot.presentation.handlers.mute import router as mute_router
+from bot.presentation.handlers.protect import router as protect_router
 from bot.presentation.handlers.reactions import router as reactions_router
 from bot.presentation.handlers.slots import router as slots_router
+from bot.presentation.handlers.tag import router as tag_router
+from bot.presentation.handlers.transfer import router as transfer_router
 from bot.presentation.middlewares.chat_context import ChatContextMiddleware
 from bot.presentation.middlewares.track_message import TrackMessageMiddleware
 
@@ -132,9 +139,13 @@ async def main() -> None:
     dp.include_router(reactions_router)
     dp.include_router(slots_router)
     dp.include_router(giveaway_router)
-
-    admin_router = create_admin_router(config.admin.prefix)
-    dp.include_router(admin_router)
+    dp.include_router(mute_router)
+    dp.include_router(tag_router)
+    dp.include_router(transfer_router)
+    dp.include_router(protect_router)
+    dp.include_router(admin_score_router)
+    dp.include_router(admin_user_router)
+    dp.include_router(help_router)
     logger.info(
         "Commands: /add, /sub, /set, /reset, /op, /deop, /mute,"
         " /amute, /selfmute, /unmute, /tag, /transfer,"

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic_settings import BaseSettings
 
 # Папка с конфигами относительно корня проекта
@@ -22,52 +22,54 @@ class Settings(BaseSettings):
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 
-@dataclass
-class ScoreConfig:
+class _BaseConfig(BaseModel):
+    """Базовая модель с общими настройками для всех конфигов."""
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class ScoreConfig(_BaseConfig):
     singular: str = "балл"
     plural_few: str = "балла"
     plural_many: str = "баллов"
     icon: str = "⭐"
 
 
-@dataclass
-class LimitsConfig:
-    daily_negative_given: int = 10        # глобальный лимит отрицательных реакций в сутки
-    daily_positive_per_target: int = 20   # лимит положительных реакций одному получателю в сутки
+class LimitsConfig(_BaseConfig):
+    daily_negative_given: int = 10       # глобальный лимит отрицательных реакций в сутки
+    daily_positive_per_target: int = 20  # лимит положительных реакций одному получателю в сутки
     daily_score_received: int = 50
     max_message_age_hours: int = 36
 
 
-@dataclass
-class SlotsConfig:
+class SlotsConfig(_BaseConfig):
     min_bet: int = 1
     max_bet: int = 200
 
 
-@dataclass
-class HistoryConfig:
+class HistoryConfig(_BaseConfig):
     retention_days: int = 7
     page_size: int = 30
 
 
-@dataclass
-class AdminConfig:
+class AdminConfig(_BaseConfig):
     prefix: str = "admin"
-    users: list[str] = field(default_factory=list)
+    users: list[str] = []
 
-    def cmd(self, action: str) -> str:
-        return f"{self.prefix}_{action}"
+    @field_validator("users", mode="before")
+    @classmethod
+    def normalize_users(cls, v: list[str] | None) -> list[str]:
+        """Приводит имена пользователей к нижнему регистру и убирает @."""
+        return [u.lstrip("@").lower() for u in (v or [])]
 
 
-@dataclass
-class AutoReactConfig:
+class AutoReactConfig(_BaseConfig):
     enabled: bool = False
     probability: float = 0.05
     positive_only: bool = True
 
 
-@dataclass
-class MuteConfig:
+class MuteConfig(_BaseConfig):
     cost_per_minute: int = 20
     min_minutes: int = 1
     max_minutes: int = 120
@@ -77,8 +79,7 @@ class MuteConfig:
     protection_duration_hours: int = 24
 
 
-@dataclass
-class TagConfig:
+class TagConfig(_BaseConfig):
     cost_self: int = 50
     cost_member: int = 100
     cost_admin: int = 200
@@ -86,24 +87,21 @@ class TagConfig:
     max_length: int = 32
 
 
-@dataclass
-class BlackjackConfig:
+class BlackjackConfig(_BaseConfig):
     min_bet: int = 1
     max_bet: int = 500
     max_games_per_window: int = 5
     window_hours: int = 1
 
 
-@dataclass
-class DiceConfig:
+class DiceConfig(_BaseConfig):
     min_bet: int = 1
     max_bet: int = 1000
     min_wait_seconds: int = 10
     max_wait_seconds: int = 3600  # 1 час
 
 
-@dataclass
-class SystemConfig:
+class SystemConfig(_BaseConfig):
     """Системные интервалы и технические параметры."""
 
     cleanup_interval_hours: int = 6
@@ -112,8 +110,7 @@ class SystemConfig:
     history_page_size: int = 30
 
 
-@dataclass
-class LlmConfig:
+class LlmConfig(_BaseConfig):
     model: str = "gemini-2.5-flash-lite"
     base_url: str = "https://api.aitunnel.ru/v1"
     max_output_tokens: int = 1024
@@ -149,22 +146,21 @@ class LlmConfig:
     )
 
 
-@dataclass
-class AppConfig:
-    score: ScoreConfig = field(default_factory=ScoreConfig)
-    reactions: dict[str, int] = field(default_factory=dict)
+class AppConfig(_BaseConfig):
+    score: ScoreConfig = ScoreConfig()
+    reactions: dict[str, int] = {}
     self_reaction_allowed: bool = False
-    limits: LimitsConfig = field(default_factory=LimitsConfig)
-    history: HistoryConfig = field(default_factory=HistoryConfig)
-    admin: AdminConfig = field(default_factory=AdminConfig)
-    mute: MuteConfig = field(default_factory=MuteConfig)
-    auto_react: AutoReactConfig = field(default_factory=AutoReactConfig)
-    tag: TagConfig = field(default_factory=TagConfig)
-    blackjack: BlackjackConfig = field(default_factory=BlackjackConfig)
-    slots: SlotsConfig = field(default_factory=SlotsConfig)
-    dice: DiceConfig = field(default_factory=DiceConfig)
-    llm: LlmConfig = field(default_factory=LlmConfig)
-    system: SystemConfig = field(default_factory=SystemConfig)
+    limits: LimitsConfig = LimitsConfig()
+    history: HistoryConfig = HistoryConfig()
+    admin: AdminConfig = AdminConfig()
+    mute: MuteConfig = MuteConfig()
+    auto_react: AutoReactConfig = AutoReactConfig()
+    tag: TagConfig = TagConfig()
+    blackjack: BlackjackConfig = BlackjackConfig()
+    slots: SlotsConfig = SlotsConfig()
+    dice: DiceConfig = DiceConfig()
+    llm: LlmConfig = LlmConfig()
+    system: SystemConfig = SystemConfig()
 
 
 def load_config(path: str | Path | None = None) -> AppConfig:
@@ -172,29 +168,7 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         path = _CONFIGS_DIR / "config.yaml"
     with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(f)
-
-    users = [u.lstrip("@").lower() for u in raw.get("admin", {}).get("users", [])]
-    admin_raw = raw.get("admin", {})
-    history_raw = raw.get("history", {})
-    blackjack_raw = raw.get("blackjack", {})
-    system_raw = raw.get("system", {})
-
-    return AppConfig(
-        score=ScoreConfig(**raw.get("score", {})),
-        reactions=raw.get("reactions", {}),
-        self_reaction_allowed=raw.get("self_reaction_allowed", False),
-        limits=LimitsConfig(**raw.get("limits", {})),
-        history=HistoryConfig(**history_raw),
-        admin=AdminConfig(prefix=admin_raw.get("prefix", "admin"), users=users),
-        mute=MuteConfig(**raw.get("mute", {})),
-        auto_react=AutoReactConfig(**raw.get("auto_react", {})),
-        tag=TagConfig(**raw.get("tag", {})),
-        blackjack=BlackjackConfig(**blackjack_raw),
-        slots=SlotsConfig(**raw.get("slots", {})),
-        dice=DiceConfig(**raw.get("dice", {})),
-        llm=LlmConfig(**raw.get("llm", {})),
-        system=SystemConfig(**system_raw),
-    )
+    return AppConfig.model_validate(raw)
 
 
 def load_messages(path: str | Path | None = None) -> dict[str, str]:
