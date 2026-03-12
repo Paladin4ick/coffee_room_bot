@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export HOME=/home/bot
 
 # Скрипт лежит в ./scripts/, проект — на уровень выше
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,7 +8,6 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 SCRIPT_PATH="${SCRIPT_DIR}/deploy.sh"
 
 cd "$PROJECT_DIR"
-
 # Самоустановка в крон при первом запуске
 CRON_JOB="*/1 * * * * $SCRIPT_PATH >> /var/log/deploy.log 2>&1"
 if ! crontab -l 2>/dev/null | grep -qF "$SCRIPT_PATH"; then
