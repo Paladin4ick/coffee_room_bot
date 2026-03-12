@@ -63,6 +63,19 @@ class IgnoreReason(str, Enum):
     UNKNOWN_MESSAGE = "unknown_message"
     EVENT_NOT_FOUND = "event_not_found"
     NEGATIVE_SCORE_ACTOR = "negative_score_actor"
+    PER_TARGET_POSITIVE_LIMIT = "per_target_positive_limit"
+
+
+@dataclass(slots=True)
+class UserStats:
+    user_id: int
+    chat_id: int
+    score_given: int = 0     # подарено кирчиков реакциями (сумма положительных дельт)
+    score_taken: int = 0     # отнято кирчиков реакциями (сумма модулей отрицательных дельт)
+    wins_blackjack: int = 0
+    wins_slots: int = 0
+    wins_dice: int = 0
+    wins_giveaway: int = 0
 
 
 @dataclass(slots=True)

@@ -8,3 +8,6 @@ class LeaderboardService:
 
     async def get_top(self, chat_id: int, limit: int = 10) -> list[Score]:
         return await self._score_repo.top(chat_id, limit)
+
+    async def get_bottom(self, chat_id: int, limit: int = 10) -> list[Score]:
+        return await self._score_repo.bottom(chat_id, limit)

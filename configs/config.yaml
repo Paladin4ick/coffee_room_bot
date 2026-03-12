@@ -17,8 +17,9 @@ reactions:
 self_reaction_allowed: false
 
 limits:
-  daily_reactions_given: 25     # сколько засчитанных реакций А может поставить в сутки (в одном чате)
-  daily_score_received: 50      # сколько очков Б может получить в сутки (в одном чате)
+  daily_negative_given: 10      # сколько отрицательных реакций А может поставить в сутки (глобальный лимит)
+  daily_positive_per_target: 20 # сколько положительных реакций А может поставить одному Б в сутки
+  daily_score_received: 50      # сколько кирчиков Б может получить в сутки (в одном чате)
   max_message_age_hours: 36     # реакции на сообщения старше N часов игнорируются
 
 history:
@@ -53,6 +54,10 @@ blackjack:
   max_bet: 500
   max_games_per_window: 5      # максимум игр в окне
   window_hours: 1              # размер временного окна в часах
+
+slots:
+  min_bet: 1
+  max_bet: 200
 
 dice:
   min_bet: 1

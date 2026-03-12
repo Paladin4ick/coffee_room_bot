@@ -19,3 +19,8 @@ class IScoreRepository(ABC):
 
     @abstractmethod
     async def top(self, chat_id: int, limit: int) -> list[Score]: ...
+
+    @abstractmethod
+    async def bottom(self, chat_id: int, limit: int) -> list[Score]:
+        """Пользователи с наименьшим счётом (антирейтинг), ascending."""
+        ...

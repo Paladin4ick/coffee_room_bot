@@ -78,20 +78,90 @@ async def cmd_top(
     user_repo: FromDishka[IUserRepository],
     formatter: FromDishka[MessageFormatter],
 ) -> None:
-    """Топ участников чата."""
-    limit = 10
+    """Топ участников чата. Отрицательное число — антирейтинг (последние места)."""
+    n = 10
     if command.args:
         try:
-            limit = max(1, min(50, int(command.args.strip())))
+            n = int(command.args.strip())
         except ValueError:
-            limit = 10
-    top_scores = await leaderboard_service.get_top(message.chat.id, limit)
+            n = 10
+
+    is_bottom = n < 0
+    limit = max(1, min(50, abs(n)))
+
+    if is_bottom:
+        scores = await leaderboard_service.get_bottom(message.chat.id, limit)
+    else:
+        scores = await leaderboard_service.get_top(message.chat.id, limit)
+
     rows: list[tuple[int, str, int]] = []
-    for rank, score in enumerate(top_scores, start=1):
+    for rank, score in enumerate(scores, start=1):
         user = await user_repo.get_by_id(score.user_id)
         name = user_link(user.username, user.full_name, user.id) if user else str(score.user_id)
         rows.append((rank, name, score.value))
-    await message.reply(formatter.leaderboard(rows), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+
+    if is_bottom:
+        p = formatter._p
+        lines = ["🔻 <b>Антирейтинг</b>"]
+        for rank, name, value in rows:
+            lines.append(f"{rank}. {name} — {value} {p.pluralize(value)}")
+        text = "\n".join(lines) if rows else "🔻 <b>Антирейтинг</b>\n<i>Нет данных</i>"
+        await message.reply(text, parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+    else:
+        await message.reply(formatter.leaderboard(rows), parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
+
+
+@router.message(Command("stats"))
+@inject
+async def cmd_stats(
+    message: Message,
+    command: CommandObject,
+    score_service: FromDishka[ScoreService],
+    user_repo: FromDishka[IUserRepository],
+    formatter: FromDishka[MessageFormatter],
+) -> None:
+    """Статистика по реакциям и победам в играх."""
+    chat_id = message.chat.id
+
+    # Определяем пользователя: реплай, @username или сам
+    target_user = None
+    if message.reply_to_message and message.reply_to_message.from_user:
+        ru = message.reply_to_message.from_user
+        target_user = await user_repo.get_by_id(ru.id)
+    elif command.args:
+        target_user = await user_repo.get_by_username(command.args.strip().lstrip("@"))
+        if target_user is None:
+            await message.reply(formatter._t.get("error_user_not_found", "Пользователь не найден."))
+            return
+
+    if target_user is not None:
+        user_id = target_user.id
+        display_name = user_link(target_user.username, target_user.full_name, target_user.id)
+    else:
+        if message.from_user is None:
+            return
+        user_id = message.from_user.id
+        display_name = user_link(message.from_user.username, message.from_user.full_name or "", message.from_user.id)
+
+    stats = await score_service.get_stats(user_id, chat_id)
+    p = formatter._p
+    icon = formatter._p._icon
+
+    total_games = stats.wins_blackjack + stats.wins_slots + stats.wins_dice + stats.wins_giveaway
+
+    text = (
+        f"📊 <b>Статистика</b> {display_name}\n\n"
+        f"<b>Реакции:</b>\n"
+        f"  🎁 Подарено: {stats.score_given} {p.pluralize(stats.score_given)}\n"
+        f"  💀 Отнято: {stats.score_taken} {p.pluralize(stats.score_taken)}\n\n"
+        f"<b>Победы в играх:</b>\n"
+        f"  🃏 Блекджек: {stats.wins_blackjack}\n"
+        f"  🎰 Слоты: {stats.wins_slots}\n"
+        f"  🎲 Кубики: {stats.wins_dice}\n"
+        f"  🎟 Розыгрыши: {stats.wins_giveaway}\n"
+        f"  <i>Итого: {total_games}</i>"
+    )
+    await message.reply(text, parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
 
 
 @router.message(Command("history"))
@@ -194,8 +264,9 @@ async def cmd_limits(
     text = (
         f"{icon} <b>Текущие лимиты бота</b>\n\n"
         f"<b>Реакции:</b>\n"
-        f"  В сутки от одного участника: {lc.daily_reactions_given}\n"
-        f"  Макс. баллов получателю в сутки: {lc.daily_score_received}\n"
+        f"  ➕ Положительных одному участнику в сутки: {lc.daily_positive_per_target}\n"
+        f"  ➖ Отрицательных в сутки (всего): {lc.daily_negative_given}\n"
+        f"  Макс. кирчиков получателю в сутки: {lc.daily_score_received}\n"
         f"  Возраст сообщения: не старше {lc.max_message_age_hours} ч.\n\n"
         f"<b>История:</b>\n"
         f"  Хранится: {config.history.retention_days} дн.\n\n"
