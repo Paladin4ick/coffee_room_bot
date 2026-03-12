@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 
 from aiogram import Bot, Router
 from aiogram.enums import ParseMode
@@ -15,6 +16,7 @@ from bot.application.interfaces.user_stats_repository import IUserStatsRepositor
 from bot.application.score_service import ScoreService
 from bot.infrastructure.config_loader import AppConfig
 from bot.infrastructure.message_formatter import MessageFormatter
+from bot.infrastructure.redis_store import RedisStore
 from bot.presentation.utils import NO_PREVIEW, schedule_delete
 
 logger = logging.getLogger(__name__)
@@ -64,6 +66,7 @@ async def cmd_slots(
     command: CommandObject,
     score_service: FromDishka[ScoreService],
     stats_repo: FromDishka[IUserStatsRepository],
+    store: FromDishka[RedisStore],
     config: FromDishka[AppConfig],
     formatter: FromDishka[MessageFormatter],
 ) -> None:
@@ -76,10 +79,16 @@ async def cmd_slots(
     sc = config.slots
 
     if not command.args:
+        cooldown_str = (
+            f"\n\n⏳ Кулдаун: {sc.cooldown_minutes} мин. между спинами"
+            if sc.cooldown_minutes > 0
+            else ""
+        )
         await message.reply(
             f"🎰 <b>Слоты</b>\n\n"
             f"Использование: /slots &lt;ставка&gt;\n"
-            f"Ставка: от {sc.min_bet} до {sc.max_bet} {p.pluralize(sc.max_bet)}\n\n"
+            f"Ставка: от {sc.min_bet} до {sc.max_bet} {p.pluralize(sc.max_bet)}"
+            f"{cooldown_str}\n\n"
             f"<b>Выплаты:</b>\n"
             f"  🎰 Джекпот (777) — ×{_MULT_JACKPOT}\n"
             f"  🏆 Три одинаковых — ×{_MULT_WIN}\n"
@@ -100,10 +109,32 @@ async def cmd_slots(
         await message.reply(f"Ставка: от {sc.min_bet} до {sc.max_bet} {p.pluralize(sc.max_bet)}.")
         return
 
+    # Проверяем кулдаун перед списанием ставки
+    cooldown_seconds = sc.cooldown_minutes * 60
+    if cooldown_seconds > 0:
+        can_play = await store.slots_cooldown_check(user_id, chat_id, cooldown_seconds)
+        if not can_play:
+            # Вычисляем, сколько минут осталось
+            import time
+            key_raw = await store._r.get(f"slots:last:{user_id}:{chat_id}")
+            if key_raw is not None:
+                elapsed = time.time() - float(key_raw)
+                remaining = math.ceil((cooldown_seconds - elapsed) / 60)
+            else:
+                remaining = sc.cooldown_minutes
+            await message.reply(
+                formatter._t["slots_cooldown"].format(minutes=remaining),
+            )
+            return
+
     score = await score_service.get_score(user_id, chat_id)
     if score.value < bet:
         await message.reply(f"Недостаточно баллов. У тебя: {score.value} {p.pluralize(score.value)}.")
         return
+
+    # Устанавливаем кулдаун сразу после всех проверок
+    if cooldown_seconds > 0:
+        await store.slots_cooldown_set(user_id, chat_id, cooldown_seconds)
 
     # Списываем ставку
     await score_service.add_score(user_id, chat_id, -bet, admin_id=user_id)

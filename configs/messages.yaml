@@ -75,3 +75,4 @@ protect_confirm: "🛡 Купить защиту от мута на {hours} ч. 
 protect_not_enough: "Недостаточно баллов. Нужно: {cost} {score_word}, у вас: {balance} {score_word_balance}."
 protect_success: "🛡 {user} купил защиту от мута на {hours} ч. за {cost} {score_word}. Баланс: {balance} {score_word_balance}."
 protect_extended: "🛡 Защита продлена до {until}. Списано: {cost} {score_word}. Баланс: {balance} {score_word_balance}."
+slots_cooldown: "⏳ Следующий спин доступен через {minutes} мин."

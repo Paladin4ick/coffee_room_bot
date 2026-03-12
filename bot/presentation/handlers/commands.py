@@ -145,7 +145,6 @@ async def cmd_stats(
 
     stats = await score_service.get_stats(user_id, chat_id)
     p = formatter._p
-    icon = formatter._p._icon
 
     total_games = stats.wins_blackjack + stats.wins_slots + stats.wins_dice + stats.wins_giveaway
 
