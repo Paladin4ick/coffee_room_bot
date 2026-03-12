@@ -17,14 +17,18 @@ from dishka.integrations.aiogram import FromDishka, inject
 
 from bot.application.blackjack_service import (
     BlackjackRound,
+    GameResult,
     format_hand,
     hand_score,
 )
+from bot.application.interfaces.user_stats_repository import IUserStatsRepository
 from bot.application.score_service import ScoreService
 from bot.infrastructure.config_loader import AppConfig
 from bot.infrastructure.message_formatter import MessageFormatter
 from bot.infrastructure.redis_store import RedisStore
 from bot.presentation.utils import NO_PREVIEW, schedule_delete
+
+_WIN_RESULTS = {GameResult.PLAYER_WIN, GameResult.DEALER_BUST, GameResult.PLAYER_BLACKJACK}
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +149,7 @@ async def cmd_blackjack(
     bot: Bot,
     command: CommandObject,
     score_service: FromDishka[ScoreService],
+    stats_repo: FromDishka[IUserStatsRepository],
     formatter: FromDishka[MessageFormatter],
     config: FromDishka[AppConfig],
     store: FromDishka[RedisStore],
@@ -216,6 +221,8 @@ async def cmd_blackjack(
                 delta,
                 admin_id=user_id,
             )
+        if rnd.result in _WIN_RESULTS:
+            await stats_repo.add_win(user_id, chat_id, "blackjack")
         text = _render_table(
             rnd,
             reveal=True,
@@ -246,6 +253,7 @@ async def cb_hit(
     callback: CallbackQuery,
     bot: Bot,
     score_service: FromDishka[ScoreService],
+    stats_repo: FromDishka[IUserStatsRepository],
     formatter: FromDishka[MessageFormatter],
     store: FromDishka[RedisStore],
 ) -> None:
@@ -273,6 +281,8 @@ async def cb_hit(
                 delta,
                 admin_id=user_id,
             )
+        if rnd.result in _WIN_RESULTS:
+            await stats_repo.add_win(user_id, chat_id, "blackjack")
         await store.bj_delete(user_id, chat_id)
         text = _render_table(
             rnd,
@@ -310,6 +320,7 @@ async def cb_stand(
     callback: CallbackQuery,
     bot: Bot,
     score_service: FromDishka[ScoreService],
+    stats_repo: FromDishka[IUserStatsRepository],
     formatter: FromDishka[MessageFormatter],
     store: FromDishka[RedisStore],
 ) -> None:
@@ -336,6 +347,8 @@ async def cb_stand(
             delta,
             admin_id=user_id,
         )
+    if rnd.result in _WIN_RESULTS:
+        await stats_repo.add_win(user_id, chat_id, "blackjack")
     await store.bj_delete(user_id, chat_id)
 
     text = _render_table(

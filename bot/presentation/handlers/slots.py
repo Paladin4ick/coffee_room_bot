@@ -1,7 +1,8 @@
-"""Хендлер слотов: /slots <ставка>"""
+"""Хендлер слотов через встроенный Telegram dice emoji 🎰."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from aiogram import Bot, Router
@@ -10,24 +11,49 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 from dishka.integrations.aiogram import FromDishka, inject
 
-from bot.application.slots_service import SlotsConfig, SlotsService, SpinOutcome
+from bot.application.interfaces.user_stats_repository import IUserStatsRepository
+from bot.application.score_service import ScoreService
+from bot.infrastructure.config_loader import AppConfig
 from bot.infrastructure.message_formatter import MessageFormatter
 from bot.presentation.utils import NO_PREVIEW, schedule_delete
 
 logger = logging.getLogger(__name__)
 router = Router(name="slots")
 
+# ── Таблица исходов по значению dice (1–64) ─────────────────────
+#
+# Telegram slot machine возвращает значение 1–64.
+# Известные «три одинаковых»:
+#   1  = BAR BAR BAR
+#   22 = GRAPE GRAPE GRAPE
+#   43 = LEMON LEMON LEMON
+#   64 = SEVEN SEVEN SEVEN (джекпот)
+# Значения 2–32 (кроме 22) считаются «частичным совпадением».
+# Значения 33–63 (кроме 43) — проигрыш.
+#
+# RTP ≈ 122% (намеренно завышен для веселья).
 
-def _render_reels(reels: list[str]) -> str:
-    return " | ".join(reels)
+_JACKPOT_VALUE = 64
+_THREE_OF_KIND = {1, 22, 43}
+_NEAR_MISS_MIN = 2
+_NEAR_MISS_MAX = 32
+
+# Множители: сколько ставок возвращается игроку
+_MULT_JACKPOT = 30     # net: +29×bet
+_MULT_WIN = 8          # net: +7×bet
+_MULT_NEAR_MISS = 0.8  # net: -0.2×bet (возврат 80%)
+_MULT_LOSS = 0.0       # net: -1×bet
 
 
-_OUTCOME_TEXT = {
-    SpinOutcome.JACKPOT: "🎰 ДЖЕКПОТ! Ты выиграл {win} {sw}!",
-    SpinOutcome.WIN: "🏆 Выигрыш! +{win} {sw}!",
-    SpinOutcome.NEAR_MISS: "😬 Почти! Потерял {loss} {sw}.",
-    SpinOutcome.LOSS: "💸 Мимо. Потерял {loss} {sw}.",
-}
+def _get_outcome(value: int) -> tuple[str, float]:
+    """Возвращает (название_исхода, множитель_возврата)."""
+    if value == _JACKPOT_VALUE:
+        return "jackpot", _MULT_JACKPOT
+    if value in _THREE_OF_KIND:
+        return "win", _MULT_WIN
+    if _NEAR_MISS_MIN <= value <= _NEAR_MISS_MAX:
+        return "near_miss", _MULT_NEAR_MISS
+    return "loss", _MULT_LOSS
 
 
 @router.message(Command("slots"))
@@ -36,25 +62,29 @@ async def cmd_slots(
     message: Message,
     bot: Bot,
     command: CommandObject,
-    slots_service: FromDishka[SlotsService],
-    slots_config: FromDishka[SlotsConfig],
+    score_service: FromDishka[ScoreService],
+    stats_repo: FromDishka[IUserStatsRepository],
+    config: FromDishka[AppConfig],
     formatter: FromDishka[MessageFormatter],
 ) -> None:
     if message.from_user is None:
         return
 
+    user_id = message.from_user.id
+    chat_id = message.chat.id
     p = formatter._p
-    cfg = slots_config
+    sc = config.slots
 
     if not command.args:
         await message.reply(
             f"🎰 <b>Слоты</b>\n\n"
             f"Использование: /slots &lt;ставка&gt;\n"
-            f"Ставка: от {cfg.min_bet} до {cfg.max_bet} {p.pluralize(cfg.max_bet)}\n\n"
-            f"Символы:\n"
-            + "\n".join(
-                f"  {s.emoji} × {s.multiplier:.0f} (три в ряд)" for s in sorted(cfg.symbols, key=lambda x: x.multiplier)
-            ),
+            f"Ставка: от {sc.min_bet} до {sc.max_bet} {p.pluralize(sc.max_bet)}\n\n"
+            f"<b>Выплаты:</b>\n"
+            f"  🎰 Джекпот (777) — ×{_MULT_JACKPOT}\n"
+            f"  🏆 Три одинаковых — ×{_MULT_WIN}\n"
+            f"  😬 Частичное совпадение — возврат {int(_MULT_NEAR_MISS * 100)}%\n"
+            f"  💸 Проигрыш — ставка сгорает",
             parse_mode=ParseMode.HTML,
             link_preview_options=NO_PREVIEW,
         )
@@ -66,37 +96,54 @@ async def cmd_slots(
         await message.reply("Ставка должна быть числом.")
         return
 
-    result = await slots_service.spin(
-        user_id=message.from_user.id,
-        chat_id=message.chat.id,
-        bet=bet,
-    )
-
-    # Обработка ошибок
-    if result == "invalid_bet":
-        await message.reply(f"Ставка: от {cfg.min_bet} до {cfg.max_bet} {p.pluralize(cfg.max_bet)}.")
+    if bet < sc.min_bet or bet > sc.max_bet:
+        await message.reply(f"Ставка: от {sc.min_bet} до {sc.max_bet} {p.pluralize(sc.max_bet)}.")
         return
-    if result == "not_enough":
-        await message.reply("Недостаточно баллов.")
-        return
-    if result == "guard_rejected":
-        await message.reply("Подождите перед следующим кручением (кулдаун или дневной лимит).")
-        return
-        # Рендерим результат
-    reels_str = _render_reels(result.reels)
-    outcome_tpl = _OUTCOME_TEXT[result.outcome]
-    outcome_str = outcome_tpl.format(
-        win=abs(result.delta),
-        loss=abs(result.delta),
-        sw=p.pluralize(abs(result.delta)),
-    )
 
-    text = (
-        f"🎰 <b>Слоты</b> — ставка {bet} {p.pluralize(bet)}\n\n"
-        f"┌ {reels_str} ┐\n\n"
-        f"{outcome_str}\n"
-        f"Баланс: {result.new_balance} {p.pluralize(result.new_balance)}"
-    )
+    score = await score_service.get_score(user_id, chat_id)
+    if score.value < bet:
+        await message.reply(f"Недостаточно баллов. У тебя: {score.value} {p.pluralize(score.value)}.")
+        return
 
-    reply = await message.reply(text, parse_mode=ParseMode.HTML, link_preview_options=NO_PREVIEW)
-    schedule_delete(bot, message, reply)
+    # Списываем ставку
+    await score_service.add_score(user_id, chat_id, -bet, admin_id=user_id)
+
+    # Запускаем анимацию — значение приходит сразу в ответе
+    dice_msg = await message.answer_dice(emoji="🎰")
+    value = dice_msg.dice.value  # 1–64
+
+    # Ждём чуть дольше анимации перед объявлением результата
+    await asyncio.sleep(3)
+
+    outcome, multiplier = _get_outcome(value)
+    payout = int(bet * multiplier)
+
+    if payout > 0:
+        await score_service.add_score(user_id, chat_id, payout, admin_id=user_id)
+
+    if outcome in ("jackpot", "win"):
+        await stats_repo.add_win(user_id, chat_id, "slots")
+
+    new_balance = await score_service.get_score(user_id, chat_id)
+    bal_str = f"{new_balance.value} {p.pluralize(new_balance.value)}"
+
+    if outcome == "jackpot":
+        win_net = payout - bet
+        result_line = f"🎰 <b>ДЖЕКПОТ!</b> Ты выиграл <b>{win_net}</b> {p.pluralize(win_net)}! 🤑"
+    elif outcome == "win":
+        win_net = payout - bet
+        result_line = f"🏆 Три одинаковых! Ты выиграл <b>{win_net}</b> {p.pluralize(win_net)}!"
+    elif outcome == "near_miss":
+        result_line = (
+            f"😬 Почти... Возвращаю {payout} {p.pluralize(payout)} "
+            f"({int(_MULT_NEAR_MISS * 100)}% ставки)."
+        )
+    else:
+        result_line = f"💸 Мимо. Потерял <b>{bet}</b> {p.pluralize(bet)}."
+
+    result_msg = await message.answer(
+        f"{result_line}\nБаланс: {bal_str}",
+        parse_mode=ParseMode.HTML,
+        link_preview_options=NO_PREVIEW,
+    )
+    schedule_delete(bot, message, result_msg)

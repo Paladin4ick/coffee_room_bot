@@ -5,7 +5,9 @@ from datetime import date, datetime, timedelta
 from bot.application.interfaces.daily_limits_repository import IDailyLimitsRepository
 from bot.application.interfaces.event_repository import IEventRepository
 from bot.application.interfaces.message_repository import IMessageRepository
+from bot.application.interfaces.per_target_limits_repository import IPerTargetLimitsRepository
 from bot.application.interfaces.score_repository import IScoreRepository
+from bot.application.interfaces.user_stats_repository import IUserStatsRepository
 from bot.domain.emoji_utils import normalize_emoji
 from bot.domain.entities import (
     ApplyResult,
@@ -55,8 +57,11 @@ class ScoreService:
         limits_repo: IDailyLimitsRepository,
         message_repo: IMessageRepository,
         reaction_registry: ReactionRegistry,
+        per_target_limits_repo: IPerTargetLimitsRepository,
+        stats_repo: IUserStatsRepository,
         self_reaction_allowed: bool,
-        daily_reactions_given: int,
+        daily_negative_given: int,
+        daily_positive_per_target: int,
         daily_score_received: int,
         max_message_age_hours: int,
     ) -> None:
@@ -65,8 +70,11 @@ class ScoreService:
         self._limits_repo = limits_repo
         self._message_repo = message_repo
         self._registry = reaction_registry
+        self._per_target_repo = per_target_limits_repo
+        self._stats_repo = stats_repo
         self._self_reaction_allowed = self_reaction_allowed
-        self._daily_reactions_given = daily_reactions_given
+        self._daily_negative_given = daily_negative_given
+        self._daily_positive_per_target = daily_positive_per_target
         self._daily_score_received = daily_score_received
         self._max_message_age_hours = max_message_age_hours
 
@@ -112,11 +120,19 @@ class ScoreService:
         if await self._event_repo.exists(actor_id, message_id, emoji):
             return ApplyResult(applied=False, reason=IgnoreReason.DUPLICATE)
 
-        # 7. Дневной лимит реакций актора
         today = datetime.now(TZ_MSK).date()
-        actor_limits = await self._limits_repo.get(actor_id, chat_id, today)
-        if actor_limits.reactions_given >= self._daily_reactions_given:
-            return ApplyResult(applied=False, reason=IgnoreReason.DAILY_REACTIONS_LIMIT)
+
+        # 7. Лимит реакций актора
+        if reaction.weight > 0:
+            # Положительные: лимит per-target (20 в день на одного пользователя)
+            per_target_count = await self._per_target_repo.get_positive_given(actor_id, target_id, chat_id, today)
+            if per_target_count >= self._daily_positive_per_target:
+                return ApplyResult(applied=False, reason=IgnoreReason.PER_TARGET_POSITIVE_LIMIT)
+        else:
+            # Отрицательные: глобальный дневной лимит
+            actor_limits = await self._limits_repo.get(actor_id, chat_id, today)
+            if actor_limits.reactions_given >= self._daily_negative_given:
+                return ApplyResult(applied=False, reason=IgnoreReason.DAILY_REACTIONS_LIMIT)
 
         # 8. Дневной лимит очков получателя
         target_limits = await self._limits_repo.get(target_id, chat_id, today)
@@ -139,7 +155,12 @@ class ScoreService:
             )
         )
 
-        await self._limits_repo.increment_given(actor_id, chat_id, today, 1)
+        if delta > 0:
+            await self._per_target_repo.increment_positive(actor_id, target_id, chat_id, today)
+            await self._stats_repo.add_score_given(actor_id, chat_id, delta)
+        else:
+            await self._limits_repo.increment_given(actor_id, chat_id, today, 1)
+            await self._stats_repo.add_score_taken(actor_id, chat_id, abs(delta))
         await self._limits_repo.increment_received(target_id, chat_id, today, abs(delta))
 
         return ApplyResult(applied=True, delta=delta, new_value=new_value)
@@ -204,10 +225,17 @@ class ScoreService:
 
         # Откат лимитов
         today = date.today()
-        await self._limits_repo.increment_given(actor_id, chat_id, today, -1)
+        if event.delta > 0:
+            await self._per_target_repo.decrement_positive(actor_id, event.target_id, chat_id, today)
+        else:
+            await self._limits_repo.increment_given(actor_id, chat_id, today, -1)
         await self._limits_repo.increment_received(event.target_id, chat_id, today, -abs(event.delta))
 
         return ApplyResult(applied=True, delta=reverse_delta, new_value=new_value)
+
+    async def get_stats(self, user_id: int, chat_id: int):
+        from bot.domain.entities import UserStats  # локальный импорт во избежание цикла
+        return await self._stats_repo.get(user_id, chat_id)
 
     async def get_score(self, user_id: int, chat_id: int) -> Score:
         score = await self._score_repo.get(user_id, chat_id)

@@ -32,9 +32,16 @@ class ScoreConfig:
 
 @dataclass
 class LimitsConfig:
-    daily_reactions_given: int = 10
-    daily_score_received: int = 20
-    max_message_age_hours: int = 48
+    daily_negative_given: int = 10        # глобальный лимит отрицательных реакций в сутки
+    daily_positive_per_target: int = 20   # лимит положительных реакций одному получателю в сутки
+    daily_score_received: int = 50
+    max_message_age_hours: int = 36
+
+
+@dataclass
+class SlotsConfig:
+    min_bet: int = 1
+    max_bet: int = 200
 
 
 @dataclass
@@ -154,6 +161,7 @@ class AppConfig:
     auto_react: AutoReactConfig = field(default_factory=AutoReactConfig)
     tag: TagConfig = field(default_factory=TagConfig)
     blackjack: BlackjackConfig = field(default_factory=BlackjackConfig)
+    slots: SlotsConfig = field(default_factory=SlotsConfig)
     dice: DiceConfig = field(default_factory=DiceConfig)
     llm: LlmConfig = field(default_factory=LlmConfig)
     system: SystemConfig = field(default_factory=SystemConfig)
@@ -182,6 +190,7 @@ def load_config(path: str | Path | None = None) -> AppConfig:
         auto_react=AutoReactConfig(**raw.get("auto_react", {})),
         tag=TagConfig(**raw.get("tag", {})),
         blackjack=BlackjackConfig(**blackjack_raw),
+        slots=SlotsConfig(**raw.get("slots", {})),
         dice=DiceConfig(**raw.get("dice", {})),
         llm=LlmConfig(**raw.get("llm", {})),
         system=SystemConfig(**system_raw),

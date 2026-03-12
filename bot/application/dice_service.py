@@ -5,6 +5,7 @@ from datetime import datetime
 
 from bot.application.interfaces.dice_repository import IDiceRepository
 from bot.application.interfaces.score_repository import IScoreRepository
+from bot.application.interfaces.user_stats_repository import IUserStatsRepository
 from bot.domain.dice_entities import DiceGame, DiceGameStatus
 
 
@@ -39,9 +40,11 @@ class DiceService:
         self,
         dice_repo: IDiceRepository,
         score_repo: IScoreRepository,
+        stats_repo: IUserStatsRepository,
     ) -> None:
         self._dice_repo = dice_repo
         self._score_repo = score_repo
+        self._stats_repo = stats_repo
 
     async def create(
         self,
@@ -128,6 +131,11 @@ class DiceService:
         # Остаток (при нечётном делении) — первому победителю
         if remainder > 0:
             await self._score_repo.add_delta(winners[0], game.chat_id, remainder)
+
+        # Победа засчитывается только в многопользовательской игре
+        if len(participants) > 1:
+            for winner_id in winners:
+                await self._stats_repo.add_win(winner_id, game.chat_id, "dice")
 
         await self._dice_repo.finish(game_id)
         return FinishResult(

@@ -61,3 +61,17 @@ class PostgresScoreRepository(IScoreRepository):
             limit,
         )
         return [Score(user_id=r["user_id"], chat_id=r["chat_id"], value=r["value"]) for r in rows]
+
+    async def bottom(self, chat_id: int, limit: int) -> list[Score]:
+        rows = await self._conn.fetch(
+            """
+            SELECT user_id, chat_id, value
+            FROM scores
+            WHERE chat_id = $1 AND value != 0
+            ORDER BY value ASC
+            LIMIT $2
+            """,
+            chat_id,
+            limit,
+        )
+        return [Score(user_id=r["user_id"], chat_id=r["chat_id"], value=r["value"]) for r in rows]

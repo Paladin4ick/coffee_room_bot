@@ -6,6 +6,7 @@ from datetime import datetime
 
 from bot.application.interfaces.giveaway_repository import IGiveawayRepository
 from bot.application.interfaces.score_repository import IScoreRepository
+from bot.application.interfaces.user_stats_repository import IUserStatsRepository
 from bot.domain.giveaway_entities import Giveaway, GiveawayStatus, GiveawayWinner
 
 
@@ -21,9 +22,11 @@ class GiveawayService:
         self,
         giveaway_repo: IGiveawayRepository,
         score_repo: IScoreRepository,
+        stats_repo: IUserStatsRepository,
     ) -> None:
         self._giveaway_repo = giveaway_repo
         self._score_repo = score_repo
+        self._stats_repo = stats_repo
 
     async def create(
         self,
@@ -91,9 +94,10 @@ class GiveawayService:
             )
             winners_with_prizes.append((user_id, prize))
 
-        # Начисляем баллы победителям
+        # Начисляем баллы победителям и записываем победы
         for user_id, prize in winners_with_prizes:
             await self._score_repo.add_delta(user_id, giveaway.chat_id, prize)
+            await self._stats_repo.add_win(user_id, giveaway.chat_id, "giveaway")
 
         await self._giveaway_repo.save_winners(winner_entities)
         await self._giveaway_repo.finish(giveaway_id)
