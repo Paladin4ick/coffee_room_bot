@@ -23,8 +23,8 @@ from bot.presentation.utils import NO_PREVIEW, reply_and_delete, safe_callback_a
 
 router = Router(name="commands")
 
-# TTLCache: страницы истории живут 10 минут, max 500 записей (chat_id, user_id)
-_history_pages: TTLCache = TTLCache(maxsize=500, ttl=600)
+# TTLCache: страницы истории живут 2 минуты, max 100 записей (chat_id, user_id)
+_history_pages: TTLCache = TTLCache(maxsize=100, ttl=120)
 
 
 def _history_kb(page: int, total: int, chat_id: int, uid: int) -> InlineKeyboardMarkup | None:
@@ -278,7 +278,7 @@ async def cmd_limits(
 
 
 # ── Кэш для пагинации истории пользователя ───────────────────────
-_uhistory_pages: TTLCache = TTLCache(maxsize=500, ttl=600)
+_uhistory_pages: TTLCache = TTLCache(maxsize=100, ttl=120)
 
 
 def _uhistory_kb(page: int, total: int, chat_id: int, uid: int, target_id: int) -> InlineKeyboardMarkup | None:

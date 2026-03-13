@@ -72,6 +72,7 @@ async def unmute_loop(container, bot: Bot, interval_seconds: int) -> None:
 
 async def mute_roulette_loop(container, bot: Bot) -> None:
     """Фоновая задача: завершает истёкшие мут-рулетки."""
+    import json
     import time as _time
 
     from bot.application.mute_service import MuteService
@@ -84,26 +85,21 @@ async def mute_roulette_loop(container, bot: Bot) -> None:
             async with container() as scope:
                 store = await scope.get(RedisStore)
                 mute_service = await scope.get(MuteService)
-                # Сканируем все ключи мут-рулеток
-                keys = []
-                async for key in store._r.scan_iter("mutegiveaway:*"):
-                    keys.append(key)
                 now = _time.time()
-                for key in keys:
+                # Обрабатываем ключи inline — без аккумуляции в список
+                async for key in store._r.scan_iter("mutegiveaway:*"):
                     raw = await store._r.get(key)
                     if raw is None:
                         continue
-                    import json
-
                     data = json.loads(raw)
                     if data["ends_at"] <= now:
                         parts = key.split(":")
                         chat_id = int(parts[1])
                         roulette_id = parts[2]
-                        data = await store.mute_roulette_delete(chat_id, roulette_id)
-                        if data:
+                        finished = await store.mute_roulette_delete(chat_id, roulette_id)
+                        if finished:
                             logger.info("Auto-finishing mutegiveaway %s in chat %d", roulette_id, chat_id)
-                            await _finish_mute_roulette(bot, chat_id, data, mute_service)
+                            await _finish_mute_roulette(bot, chat_id, finished, mute_service)
         except Exception:
             logger.exception("Mute roulette loop failed")
 
@@ -162,8 +158,8 @@ async def main() -> None:
     sys_cfg = config.system
     cleanup_task = asyncio.create_task(cleanup_loop(container, sys_cfg.cleanup_interval_hours))
     unmute_task = asyncio.create_task(unmute_loop(container, bot, sys_cfg.unmute_check_interval_seconds))
-    asyncio.create_task(giveaway_loop(bot, container))
-    asyncio.create_task(dice_loop(bot, container))
+    giveaway_task = asyncio.create_task(giveaway_loop(bot, container))
+    dice_task = asyncio.create_task(dice_loop(bot, container))
     mute_roulette_task = asyncio.create_task(mute_roulette_loop(container, bot))
 
     logger.info("Bot starting…")
@@ -175,6 +171,8 @@ async def main() -> None:
     finally:
         cleanup_task.cancel()
         unmute_task.cancel()
+        giveaway_task.cancel()
+        dice_task.cancel()
         mute_roulette_task.cancel()
         if tg_log_handler:
             tg_log_handler.stop()
