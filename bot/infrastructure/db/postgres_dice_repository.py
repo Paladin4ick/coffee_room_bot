@@ -60,6 +60,8 @@ class PostgresDiceRepository(IDiceRepository):
             """
             SELECT * FROM dice_games
             WHERE status = 'pending' AND ends_at <= $1
+            ORDER BY ends_at
+            LIMIT 50
             """,
             now,
         )
