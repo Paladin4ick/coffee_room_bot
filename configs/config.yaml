@@ -53,20 +53,20 @@ tag:
 
 blackjack:
   min_bet: 1
-  max_bet: 500
+  max_bet: 50               # макс. ставка ~1/5 недельного заработка топ-игрока
   max_games_per_window: 5      # максимум игр в окне
   window_hours: 1              # размер временного окна в часах
 
 slots:
   min_bet: 1
-  max_bet: 200
+  max_bet: 25               # джекпот (×30) = 750 — событие, но не ломает экономику
   cooldown_minutes: 60      # кулдаун между спинами одного пользователя (в минутах)
 
 dice:
   min_bet: 1
   max_bet: 1000
   min_wait_seconds: 10         # минимальное время сбора участников
-  max_wait_seconds: 3600       # максимальное время сбора (1 час)
+  max_wait_seconds: 900        # максимальное время сбора (15 минут)
 
 llm:
   model: "gemini-2.5-flash-lite"
