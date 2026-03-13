@@ -44,7 +44,7 @@ class LimitsConfig(_BaseConfig):
 
 class SlotsConfig(_BaseConfig):
     min_bet: int = 1
-    max_bet: int = 200
+    max_bet: int = 25
     cooldown_minutes: int = 60  # кулдаун между спинами одного пользователя
 
 
@@ -92,7 +92,7 @@ class TagConfig(_BaseConfig):
 
 class BlackjackConfig(_BaseConfig):
     min_bet: int = 1
-    max_bet: int = 500
+    max_bet: int = 50
     max_games_per_window: int = 5
     window_hours: int = 1
 
