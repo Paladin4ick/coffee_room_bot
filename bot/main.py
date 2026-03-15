@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 
+import redis.asyncio as aioredis
 from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
 from dishka import make_async_container
@@ -31,6 +32,7 @@ from bot.presentation.middlewares.auto_delete import AutoDeleteCommandMiddleware
 from bot.presentation.middlewares.chat_context import ChatContextMiddleware
 from bot.presentation.middlewares.retry_network import RetryNetworkMiddleware
 from bot.presentation.middlewares.track_message import TrackMessageMiddleware
+from bot.presentation import utils as presentation_utils
 from bot.presentation.utils import delete_loop
 
 logging.basicConfig(
@@ -148,6 +150,17 @@ async def main() -> None:
     settings = Settings()
     config = load_config()
 
+    # ── Redis ────────────────────────────────────────────────────
+    # Отдельное соединение для очереди удалений (вне DI-контейнера),
+    # чтобы delete_loop мог работать независимо от dishka-скопов.
+    # DI-контейнер создаёт своё соединение для RedisStore — это нормально,
+    # Redis поддерживает множество параллельных клиентов.
+    redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+
+    # Передаём redis в presentation.utils — schedule_delete/schedule_delete_id
+    # будут записывать в общий Redis sorted set, доступный всем инстансам.
+    presentation_utils.init_redis(redis)
+
     container = make_async_container(AppProvider(), RequestProvider())
 
     # TELEGRAM_PROXY — опциональный SOCKS5/HTTP прокси для обхода блокировок.
@@ -224,7 +237,8 @@ async def main() -> None:
     dice_task = asyncio.create_task(dice_loop(bot, container))
     mute_roulette_task = asyncio.create_task(mute_roulette_loop(container, bot))
     bj_cleanup_task = asyncio.create_task(bj_cleanup_loop(container, bot))
-    delete_task = asyncio.create_task(delete_loop(bot))
+    # delete_loop теперь принимает redis — читает очередь из общего Redis sorted set
+    delete_task = asyncio.create_task(delete_loop(bot, redis))
 
     logger.info("Bot starting…")
     try:
@@ -244,6 +258,7 @@ async def main() -> None:
             tg_log_handler.stop()
         await container.close()
         await bot.session.close()
+        await redis.aclose()
 
 
 if __name__ == "__main__":
