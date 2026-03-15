@@ -2,7 +2,6 @@ import asyncio
 import logging
 import os
 
-from aiohttp import ClientTimeout
 from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
 from dishka import make_async_container
@@ -152,7 +151,8 @@ async def main() -> None:
     container = make_async_container(AppProvider(), RequestProvider())
 
     # Короткий таймаут: не ждём 60 с на SSL handshake, падаем быстро и идём дальше
-    session = AiohttpSession(timeout=ClientTimeout(total=15, connect=8))
+    # AiohttpSession принимает timeout как int (секунды), не ClientTimeout
+    session = AiohttpSession(timeout=15)
     bot = Bot(token=settings.bot_token, session=session)
 
     # Мониторинг: отправка логов в Telegram-чат
