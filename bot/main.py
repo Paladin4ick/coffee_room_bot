@@ -29,6 +29,7 @@ from bot.presentation.handlers.transfer import router as transfer_router
 from bot.presentation.middlewares.auto_delete import AutoDeleteCommandMiddleware
 from bot.presentation.middlewares.chat_context import ChatContextMiddleware
 from bot.presentation.middlewares.track_message import TrackMessageMiddleware
+from bot.presentation.utils import delete_loop
 
 logging.basicConfig(
     level=logging.INFO,
@@ -105,7 +106,7 @@ async def mute_roulette_loop(container, bot: Bot) -> None:
 
 
 async def bj_cleanup_loop(container, bot: Bot) -> None:
-    """Фоновая задача: возврат ставки по истёкшим играм блекджека."""
+    """Фоновая задача: закрывает истёкшие игры блекджека (возвращает половину ставки)."""
     from bot.application.score_service import ScoreService
     from bot.infrastructure.redis_store import RedisStore
 
@@ -119,13 +120,18 @@ async def bj_cleanup_loop(container, bot: Bot) -> None:
                     user_id = data["player_id"]
                     chat_id = data["chat_id"]
                     bet = data["bet"]
+                    refund = bet // 2
                     message_id = data.get("message_id", 0)
-                    logger.info("BJ timeout: returning %d to user %d in chat %d", bet, user_id, chat_id)
-                    await score_service.add_score(user_id, chat_id, bet, admin_id=user_id)
+                    logger.info(
+                        "BJ timeout: refunding %d/%d to user %d in chat %d",
+                        refund, bet, user_id, chat_id,
+                    )
+                    if refund > 0:
+                        await score_service.add_score(user_id, chat_id, refund, admin_id=user_id)
                     if message_id:
                         try:
                             await bot.edit_message_text(
-                                "⏰ Время вышло! Ставка возвращена.",
+                                f"⏰ Время вышло! Возвращено {refund} из {bet}.",
                                 chat_id=chat_id,
                                 message_id=message_id,
                                 reply_markup=None,
@@ -194,6 +200,7 @@ async def main() -> None:
     dice_task = asyncio.create_task(dice_loop(bot, container))
     mute_roulette_task = asyncio.create_task(mute_roulette_loop(container, bot))
     bj_cleanup_task = asyncio.create_task(bj_cleanup_loop(container, bot))
+    delete_task = asyncio.create_task(delete_loop(bot))
 
     logger.info("Bot starting…")
     try:
@@ -208,6 +215,7 @@ async def main() -> None:
         dice_task.cancel()
         mute_roulette_task.cancel()
         bj_cleanup_task.cancel()
+        delete_task.cancel()
         if tg_log_handler:
             tg_log_handler.stop()
         await container.close()
