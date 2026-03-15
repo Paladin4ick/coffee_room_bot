@@ -354,6 +354,7 @@ async def cmd_selfmute(
     mute_service: FromDishka[MuteService],
     formatter: FromDishka[MessageFormatter],
     config: FromDishka[AppConfig],
+    store: FromDishka[RedisStore],
 ) -> None:
     if message.from_user is None or message.bot is None:
         return
@@ -386,7 +387,25 @@ async def cmd_selfmute(
     try:
         member = await bot.get_chat_member(chat_id, user_id)
         if isinstance(member, ChatMemberOwner):
-            await reply_and_delete(message, formatter._t["selfmute_failed"])
+            until_ts = until.timestamp()
+            await store.owner_mute_set(chat_id, user_id, until_ts)
+            await mute_service.save_mute(
+                MuteEntry(
+                    user_id=user_id,
+                    chat_id=chat_id,
+                    muted_by=user_id,
+                    until_at=until,
+                    was_admin=False,
+                    admin_permissions=None,
+                )
+            )
+            user_link_str = user_link(message.from_user.username, message.from_user.full_name or "", user_id)
+            await reply_and_delete(
+                message,
+                formatter._t["selfmute_success"].format(user=user_link_str, duration=format_duration(seconds)),
+                parse_mode=ParseMode.HTML,
+                link_preview_options=NO_PREVIEW,
+            )
             return
         if isinstance(member, ChatMemberAdministrator):
             was_admin = True
