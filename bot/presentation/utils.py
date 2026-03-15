@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import heapq
 import logging
+import time
 from typing import Any
 
 from aiogram import Bot
@@ -17,24 +19,45 @@ NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 # Задержка автоудаления для обычных (не игровых) ответов бота
 AUTO_DELETE_DELAY = 60
 
-
-async def _delete_after(bot: Bot, chat_id: int, message_id: int, delay: int) -> None:
-    await asyncio.sleep(delay)
-    try:
-        await bot.delete_message(chat_id, message_id)
-    except Exception:
-        pass
+# Централизованная очередь удалений: (delete_at, chat_id, message_id)
+# Используется heap для O(log n) вставки и извлечения минимума.
+# Безопасно в asyncio (однопоточная среда) — синхронизация не нужна.
+_delete_heap: list[tuple[float, int, int]] = []
 
 
 def schedule_delete(bot: Bot, *messages: Message, delay: int = 120) -> None:
     """Планирует удаление одного или нескольких сообщений через delay секунд."""
+    t = time.monotonic() + delay
     for msg in messages:
-        asyncio.create_task(_delete_after(bot, msg.chat.id, msg.message_id, delay))
+        heapq.heappush(_delete_heap, (t, msg.chat.id, msg.message_id))
 
 
 def schedule_delete_id(bot: Bot, chat_id: int, message_id: int, delay: int = 120) -> None:
     """Планирует удаление сообщения по chat_id и message_id через delay секунд."""
-    asyncio.create_task(_delete_after(bot, chat_id, message_id, delay))
+    heapq.heappush(_delete_heap, (time.monotonic() + delay, chat_id, message_id))
+
+
+async def delete_loop(bot: Bot) -> None:
+    """Фоновый воркер: удаляет сообщения из очереди по одному.
+
+    Вместо N параллельных задач (которые одновременно флудят Telegram и
+    провоцируют 429 RetryAfter) используется один цикл с паузой 50 мс
+    между запросами (~20 удалений/сек максимум).
+    """
+    while True:
+        now = time.monotonic()
+        if _delete_heap and _delete_heap[0][0] <= now:
+            _, chat_id, message_id = heapq.heappop(_delete_heap)
+            try:
+                await bot.delete_message(chat_id, message_id)
+            except Exception:
+                pass
+            # Пауза между запросами — не флудим Telegram API
+            await asyncio.sleep(0.05)
+        else:
+            # Ждём до ближайшего запланированного удаления или максимум 2 сек
+            wait = (_delete_heap[0][0] - now) if _delete_heap else 2.0
+            await asyncio.sleep(min(wait, 2.0))
 
 
 async def safe_callback_answer(
