@@ -79,9 +79,7 @@
         { "expr": "sum(count_over_time({service=\"bot\"} |= \"Unmuting user\" [30m]))", "legendFormat": "unmutes", "refId": "B" },
         { "expr": "sum(count_over_time({service=\"bot\"} |= \"selfmute\" [30m]))", "legendFormat": "selfmutes", "refId": "C" }
       ],
-      "fieldConfig": {
-        "defaults": { "custom": { "lineWidth": 2, "fillOpacity": 10 } }
-      },
+      "fieldConfig": { "defaults": { "custom": { "lineWidth": 2, "fillOpacity": 10 } } },
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } }
     },
     {
@@ -140,8 +138,10 @@
         "name": "datasource",
         "type": "datasource",
         "pluginId": "loki",
+        "query": "loki",
         "label": "Datasource",
         "hide": 0,
+        "refresh": 1,
         "current": { "selected": true, "text": "Loki", "value": "Loki" }
       }
     ]

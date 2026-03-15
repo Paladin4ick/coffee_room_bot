@@ -75,9 +75,8 @@
       "targets": [
         { "expr": "sum(count_over_time({service=\"bot\"} |= \"TelegramBadRequest\" [24h]))", "legendFormat": "TelegramBadRequest", "refId": "A" },
         { "expr": "sum(count_over_time({service=\"bot\"} |= \"asyncpg\" |= \"Error\" [24h]))", "legendFormat": "asyncpg errors", "refId": "B" },
-        { "expr": "sum(count_over_time({service=\"bot\"} |= \"redis\" |= \"Error\" [24h]))", "legendFormat": "redis errors", "refId": "C" },
-        { "expr": "sum(count_over_time({service=\"bot\"} |= \"NetworkError\" [24h]))", "legendFormat": "NetworkError", "refId": "D" },
-        { "expr": "sum(count_over_time({service=\"bot\"} |= \"TimeoutError\" [24h]))", "legendFormat": "TimeoutError", "refId": "E" }
+        { "expr": "sum(count_over_time({service=\"bot\"} |= \"NetworkError\" [24h]))", "legendFormat": "NetworkError", "refId": "C" },
+        { "expr": "sum(count_over_time({service=\"bot\"} |= \"TimeoutError\" [24h]))", "legendFormat": "TimeoutError", "refId": "D" }
       ],
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "horizontal", "displayMode": "gradient" },
       "fieldConfig": { "defaults": { "color": { "mode": "continuous-RdYlGr" } } }
@@ -104,7 +103,7 @@
       "gridPos": { "x": 0, "y": 23, "w": 24, "h": 10 },
       "datasource": { "type": "loki", "uid": "${datasource}" },
       "targets": [
-        { "expr": "{service=\"bot\"} | level=~\"error|warning\"", "refId": "A" }
+        { "expr": "{service=\"bot\"} | json | level=~\"error|warning\"", "refId": "A" }
       ],
       "options": { "dedupStrategy": "none", "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true }
     }
@@ -115,8 +114,10 @@
         "name": "datasource",
         "type": "datasource",
         "pluginId": "loki",
+        "query": "loki",
         "label": "Datasource",
         "hide": 0,
+        "refresh": 1,
         "current": { "selected": true, "text": "Loki", "value": "Loki" }
       }
     ]
