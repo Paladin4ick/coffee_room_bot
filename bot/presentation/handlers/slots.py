@@ -48,13 +48,18 @@ _MULT_NEAR_MISS = 0.8  # net: -0.2×bet (возврат 80%)
 _MULT_LOSS = 0.0       # net: -1×bet
 
 
+def _get_slots(value: int) -> tuple[int, int, int]:
+    v = value - 1
+    return v % 4, (v // 4) % 4, (v // 16) % 4
+
+
 def _get_outcome(value: int) -> tuple[str, float]:
-    """Возвращает (название_исхода, множитель_возврата)."""
-    if value == _JACKPOT_VALUE:
+    if value == _JACKPOT_VALUE:  # 64 = 7 7 7
         return "jackpot", _MULT_JACKPOT
-    if value in _THREE_OF_KIND:
+    s1, s2, s3 = _get_slots(value)
+    if s1 == s2 == s3:  # три одинаковых: 1, 22, 43
         return "win", _MULT_WIN
-    if _NEAR_MISS_MIN <= value <= _NEAR_MISS_MAX:
+    if s1 == s2 or s2 == s3 or s1 == s3:  # два одинаковых — любая пара
         return "near_miss", _MULT_NEAR_MISS
     return "loss", _MULT_LOSS
 
