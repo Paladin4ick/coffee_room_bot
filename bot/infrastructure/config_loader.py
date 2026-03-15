@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-import logging
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TypeVar
 
 import yaml
-from pydantic import BaseModel, ConfigDict, field_validator
-from pydantic_settings import BaseSettings
+from adaptix import Retort
+from dynaconf import Dynaconf
 
 # Папка с конфигами относительно корня проекта
 _CONFIGS_DIR = Path("configs")
 
 
-class Settings(BaseSettings):
+@dataclass(slots=True, kw_only=True)
+class Settings:
     bot_token: str = ""
     database_url: str = "postgresql://scorebot:scorebot@db:5432/scorebot"
     aitunnel_api_key: str = ""
@@ -20,58 +22,51 @@ class Settings(BaseSettings):
     log_chat_id: int = 0  # Telegram chat ID для отправки логов (0 = отключено)
     log_level: str = "ERROR"  # уровень логов для Telegram: ERROR, WARNING, INFO
 
-    model_config = {"env_file": ".env", "extra": "ignore"}
 
-
-class _BaseConfig(BaseModel):
-    """Базовая модель с общими настройками для всех конфигов."""
-
-    model_config = ConfigDict(extra="ignore")
-
-
-class ScoreConfig(_BaseConfig):
+@dataclass(slots=True, kw_only=True)
+class ScoreConfig:
     singular: str = "балл"
     plural_few: str = "балла"
     plural_many: str = "баллов"
     icon: str = "⭐"
 
 
-class LimitsConfig(_BaseConfig):
+@dataclass(slots=True, kw_only=True)
+class LimitsConfig:
     daily_negative_given: int = 10
     daily_positive_per_target: int = 20
     daily_score_received: int = 50
     max_message_age_hours: int = 36
 
 
-class SlotsConfig(_BaseConfig):
+@dataclass(slots=True, kw_only=True)
+class SlotsConfig:
     min_bet: int = 1
     max_bet: int = 25
     cooldown_minutes: int = 60
 
 
-class HistoryConfig(_BaseConfig):
+@dataclass(slots=True, kw_only=True)
+class HistoryConfig:
     retention_days: int = 7
     page_size: int = 30
 
 
-class AdminConfig(_BaseConfig):
+@dataclass(slots=True, kw_only=True)
+class AdminConfig:
     prefix: str = "admin"
-    users: list[str] = []
-
-    @field_validator("users", mode="before")
-    @classmethod
-    def normalize_users(cls, v: list[str] | None) -> list[str]:
-        """Приводит имена пользователей к нижнему регистру и убирает @."""
-        return [u.lstrip("@").lower() for u in (v or [])]
+    users: list[str] = field(default_factory=list)
 
 
-class AutoReactConfig(_BaseConfig):
+@dataclass(slots=True, kw_only=True)
+class AutoReactConfig:
     enabled: bool = False
     probability: float = 0.05
     positive_only: bool = True
 
 
-class MuteConfig(_BaseConfig):
+@dataclass(slots=True, kw_only=True)
+class MuteConfig:
     cost_per_minute: int = 3
     min_minutes: int = 1
     max_minutes: int = 15
@@ -83,7 +78,8 @@ class MuteConfig(_BaseConfig):
     protection_duration_hours: int = 24
 
 
-class TagConfig(_BaseConfig):
+@dataclass(slots=True, kw_only=True)
+class TagConfig:
     cost_self: int = 50
     cost_member: int = 100
     cost_admin: int = 200
@@ -91,7 +87,8 @@ class TagConfig(_BaseConfig):
     max_length: int = 32
 
 
-class BlackjackConfig(_BaseConfig):
+@dataclass(slots=True, kw_only=True)
+class BlackjackConfig:
     min_bet: int = 1
     max_bet: int = 50
     max_games_per_window: int = 5
@@ -99,14 +96,16 @@ class BlackjackConfig(_BaseConfig):
     game_timeout_seconds: int = 60
 
 
-class DiceConfig(_BaseConfig):
+@dataclass(slots=True, kw_only=True)
+class DiceConfig:
     min_bet: int = 1
     max_bet: int = 1000
     min_wait_seconds: int = 10
     max_wait_seconds: int = 900
 
 
-class SystemConfig(_BaseConfig):
+@dataclass(slots=True, kw_only=True)
+class SystemConfig:
     """Системные интервалы и технические параметры."""
 
     cleanup_interval_hours: int = 6
@@ -115,7 +114,8 @@ class SystemConfig(_BaseConfig):
     history_page_size: int = 30
 
 
-class LlmConfig(_BaseConfig):
+@dataclass(slots=True, kw_only=True)
+class LlmConfig:
     model: str = "gemini-2.5-flash-lite"
     base_url: str = "https://api.aitunnel.ru/v1"
     max_output_tokens: int = 1024
@@ -151,59 +151,67 @@ class LlmConfig(_BaseConfig):
     )
 
 
-class RenewConfig(_BaseConfig):
+@dataclass(slots=True, kw_only=True)
+class RenewConfig:
     cost: int = 100
     daily_limit: int = 2
 
 
-class BugConfig(_BaseConfig):
+@dataclass(slots=True, kw_only=True)
+class BugConfig:
     """Конфиг для команды /bug — кому отправлять баг-репорты."""
-    recipients: list[int] = []
+
+    recipients: list[int] = field(default_factory=list)
 
 
-class LoggingConfig(_BaseConfig):
+@dataclass(slots=True, kw_only=True)
+class LoggingConfig:
     """Настройки логирования через structlog."""
-    level: int = logging.INFO
+
+    level: str = "INFO"
     human_readable_logs: bool = False  # True = цветной консольный вывод (dev), False = JSON (prod)
 
-    @field_validator("level", mode="before")
-    @classmethod
-    def parse_level(cls, v) -> int:
-        """Принимает строку ('INFO', 'DEBUG') или число."""
-        if isinstance(v, str):
-            numeric = getattr(logging, v.upper(), None)
-            if numeric is None:
-                raise ValueError(f"Неизвестный уровень логирования: {v!r}")
-            return numeric
-        return v
 
-
-class AppConfig(_BaseConfig):
-    score: ScoreConfig = ScoreConfig()
-    reactions: dict[str, int] = {}
+@dataclass(slots=True, kw_only=True)
+class AppConfig:
+    score: ScoreConfig
+    reactions: dict[str, int] = field(default_factory=dict)
     self_reaction_allowed: bool = False
-    limits: LimitsConfig = LimitsConfig()
-    history: HistoryConfig = HistoryConfig()
-    admin: AdminConfig = AdminConfig()
-    mute: MuteConfig = MuteConfig()
-    auto_react: AutoReactConfig = AutoReactConfig()
-    tag: TagConfig = TagConfig()
-    blackjack: BlackjackConfig = BlackjackConfig()
-    slots: SlotsConfig = SlotsConfig()
-    dice: DiceConfig = DiceConfig()
-    llm: LlmConfig = LlmConfig()
-    system: SystemConfig = SystemConfig()
-    renew: RenewConfig = RenewConfig()
-    bug: BugConfig = BugConfig()
-    logging: LoggingConfig = LoggingConfig()
+    limits: LimitsConfig
+    history: HistoryConfig
+    admin: AdminConfig
+    mute: MuteConfig
+    auto_react: AutoReactConfig
+    tag: TagConfig
+    blackjack: BlackjackConfig
+    slots: SlotsConfig
+    dice: DiceConfig
+    llm: LlmConfig
+    system: SystemConfig
+    renew: RenewConfig
+    bug: BugConfig
+    logging: LoggingConfig
 
 
-def load_config(path: str | Path | None = None) -> AppConfig:
-    if path is None:
-        path = _CONFIGS_DIR / "config.yaml"
-    with open(path, encoding="utf-8") as f:
-        raw = yaml.safe_load(f)
-    return AppConfig.model_validate(raw)
+T = TypeVar("T")
+
+
+def load_settings[T](env_file: str | None = None, config: type[T] | None = None) -> T:
+    dyna = Dynaconf(
+        dotenv_path=env_file or ".env",
+        load_dotenv=True,
+        lowercase_read=True,
+        envvar_prefix="CONFIG",
+    )
+    return Retort().load(dyna, config or Settings)
+
+
+def load_config[T](filename: str, config: type[T]) -> T:
+    dyna = Dynaconf(
+        settings_files=[_CONFIGS_DIR / filename],
+        merge_enabled=True,
+    )
+    return Retort().load(dyna, config)
 
 
 def load_messages(path: str | Path | None = None) -> dict[str, str]:
@@ -219,3 +227,13 @@ def load_help_config(path: str | Path | None = None) -> dict:
         path = _CONFIGS_DIR / "help.yaml"
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+if __name__ == "__main__":
+    from rich import print as rprint
+
+    app_config = load_config("config.yaml", AppConfig)
+    settings = load_settings()
+
+    rprint(app_config)
+    rprint(settings)
