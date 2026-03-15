@@ -60,33 +60,36 @@ async def cmd_mute(
     p = formatter._p
     parsed = await _resolve_mute_args(command.args, message, user_repo)
     if parsed is None:
-        await reply_and_delete(message,formatter._t["mute_usage"].format(min=mute_cfg.min_minutes, max=mute_cfg.max_minutes))
+        await reply_and_delete(message, formatter._t["mute_usage"].format(min=mute_cfg.min_minutes, max=mute_cfg.max_minutes))
         return
     target, minutes = parsed
     if target is None:
-        await reply_and_delete(message,formatter._t["error_user_not_found"])
+        await reply_and_delete(message, formatter._t["error_user_not_found"])
         return
     if target.id == message.from_user.id:
-        await reply_and_delete(message,formatter._t["mute_self"])
+        await reply_and_delete(message, formatter._t["mute_self"])
         return
     if minutes < mute_cfg.min_minutes or minutes > mute_cfg.max_minutes:
-        await reply_and_delete(message,
-            formatter._t["mute_invalid_minutes"].format(min=mute_cfg.min_minutes, max=mute_cfg.max_minutes)
+        await reply_and_delete(
+            message,
+            formatter._t["mute_invalid_minutes"].format(min=mute_cfg.min_minutes, max=mute_cfg.max_minutes),
         )
         return
     # Дневной лимит мутов
     if mute_cfg.daily_limit > 0:
         daily_count = await store.mute_daily_count(message.from_user.id, message.chat.id)
         if daily_count >= mute_cfg.daily_limit:
-            await reply_and_delete(message,
-                formatter._t["mute_daily_limit"].format(count=daily_count, limit=mute_cfg.daily_limit)
+            await reply_and_delete(
+                message,
+                formatter._t["mute_daily_limit"].format(count=daily_count, limit=mute_cfg.daily_limit),
             )
             return
     # Кулдаун между мутами одного участника
     target_link = user_link(target.username, target.full_name, target.id)
     if mute_cfg.target_cooldown_hours > 0:
         if not await store.mute_target_cooldown_ok(message.from_user.id, target.id, message.chat.id):
-            await reply_and_delete(message,
+            await reply_and_delete(
+                message,
                 formatter._t["mute_target_cooldown"].format(
                     target=target_link, hours=mute_cfg.target_cooldown_hours
                 ),
@@ -97,7 +100,8 @@ async def cmd_mute(
     protected_until = await protection_repo.get(target.id, message.chat.id)
     if protected_until is not None:
         until_str = protected_until.astimezone(TZ_MSK).strftime("%H:%M %d.%m")
-        await reply_and_delete(message,
+        await reply_and_delete(
+            message,
             formatter._t["mute_target_protected"].format(target=target_link, until=until_str),
             parse_mode=ParseMode.HTML,
             link_preview_options=NO_PREVIEW,
@@ -106,23 +110,67 @@ async def cmd_mute(
     cost = minutes * mute_cfg.cost_per_minute
     score = await score_service.get_score(message.from_user.id, message.chat.id)
     if score.value < cost:
-        await reply_and_delete(message,
+        await reply_and_delete(
+            message,
             formatter._t["mute_not_enough"].format(
                 cost=cost,
                 score_word=p.pluralize(cost),
                 balance=score.value,
                 score_word_balance=p.pluralize(score.value),
-            )
+            ),
         )
         return
     bot = message.bot
     chat_id = message.chat.id
     until = datetime.now(TZ_MSK) + timedelta(minutes=minutes)
+
+    # Проверяем, является ли цель владельцем чата
     try:
         member = await bot.get_chat_member(chat_id, target.id)
     except Exception:
-        await reply_and_delete(message,formatter._t["mute_failed"])
+        await reply_and_delete(message, formatter._t["mute_failed"])
         return
+
+    if isinstance(member, ChatMemberOwner):
+        # ── Owner soft-mute: удаляем сообщения через middleware ──
+        result = await score_service.spend_score(
+            actor_id=message.from_user.id, target_id=target.id, chat_id=chat_id, cost=cost
+        )
+        if not result.success:
+            await reply_and_delete(
+                message,
+                formatter._t["mute_not_enough"].format(
+                    cost=cost,
+                    score_word=p.pluralize(cost),
+                    balance=result.current_balance,
+                    score_word_balance=p.pluralize(result.current_balance),
+                ),
+            )
+            return
+        await store.owner_mute_set(chat_id, target.id, until.timestamp())
+        # Фиксируем в Redis
+        if mute_cfg.daily_limit > 0:
+            await store.mute_daily_increment(message.from_user.id, chat_id)
+        if mute_cfg.target_cooldown_hours > 0:
+            await store.mute_target_cooldown_set(message.from_user.id, target.id, chat_id, mute_cfg.target_cooldown_hours)
+        actor_link = user_link(message.from_user.username, message.from_user.full_name or "", message.from_user.id)
+        await reply_and_delete(
+            message,
+            formatter._t["mute_success"].format(
+                actor=actor_link,
+                target=target_link,
+                minutes=minutes,
+                cost=cost,
+                score_word=p.pluralize(cost),
+                balance=result.new_balance,
+                score_word_balance=p.pluralize(result.new_balance),
+            ),
+            parse_mode=ParseMode.HTML,
+            link_preview_options=NO_PREVIEW,
+        )
+        return
+
+    # ── Обычный мут через Telegram restrict ──────────────────────
     was_admin = isinstance(member, ChatMemberAdministrator)
     admin_perms: dict | None = None
     if was_admin:
@@ -132,7 +180,7 @@ async def cmd_mute(
                 chat_id=chat_id, user_id=target.id, **{f: False for f in _ADMIN_PERM_FIELDS}
             )
         except Exception:
-            await reply_and_delete(message,formatter._t["mute_failed"])
+            await reply_and_delete(message, formatter._t["mute_failed"])
             return
     try:
         await bot.restrict_chat_member(
@@ -147,7 +195,7 @@ async def cmd_mute(
                 await bot.promote_chat_member(chat_id=chat_id, user_id=target.id, **_promote_kwargs(admin_perms))
             except Exception:
                 logger.exception("Failed to restore admin rights after mute failure")
-        await reply_and_delete(message,formatter._t["mute_failed"])
+        await reply_and_delete(message, formatter._t["mute_failed"])
         return
     await mute_service.save_mute(
         MuteEntry(
@@ -175,13 +223,14 @@ async def cmd_mute(
                 admin_permissions=admin_perms,
             ),
         )
-        await reply_and_delete(message,
+        await reply_and_delete(
+            message,
             formatter._t["mute_not_enough"].format(
                 cost=cost,
                 score_word=p.pluralize(cost),
                 balance=result.current_balance,
                 score_word_balance=p.pluralize(result.current_balance),
-            )
+            ),
         )
         return
     # Фиксируем мут в Redis (счётчик и кулдаун)
@@ -190,7 +239,8 @@ async def cmd_mute(
     if mute_cfg.target_cooldown_hours > 0:
         await store.mute_target_cooldown_set(message.from_user.id, target.id, chat_id, mute_cfg.target_cooldown_hours)
     actor_link = user_link(message.from_user.username, message.from_user.full_name or "", message.from_user.id)
-    await reply_and_delete(message,
+    await reply_and_delete(
+        message,
         formatter._t["mute_success"].format(
             actor=actor_link,
             target=target_link,
@@ -231,24 +281,24 @@ async def cmd_amute(
         except Exception:
             has_restrict = False
         if not has_restrict:
-            await reply_and_delete(message,formatter._t["amute_not_allowed"])
+            await reply_and_delete(message, formatter._t["amute_not_allowed"])
             return
     parsed = await _resolve_mute_args(command.args, message, user_repo)
     if parsed is None:
-        await reply_and_delete(message,formatter._t["amute_usage"].format(min=mute_cfg.min_minutes, max=mute_cfg.max_minutes))
+        await reply_and_delete(message, formatter._t["amute_usage"].format(min=mute_cfg.min_minutes, max=mute_cfg.max_minutes))
         return
     target, minutes = parsed
     if target is None:
-        await reply_and_delete(message,formatter._t["error_user_not_found"])
+        await reply_and_delete(message, formatter._t["error_user_not_found"])
         return
     if target.id == message.from_user.id:
-        await reply_and_delete(message,formatter._t["mute_self"])
+        await reply_and_delete(message, formatter._t["mute_self"])
         return
     until = datetime.now(TZ_MSK) + timedelta(minutes=minutes)
     try:
         member = await bot.get_chat_member(chat_id, target.id)
     except Exception:
-        await reply_and_delete(message,formatter._t["mute_failed"])
+        await reply_and_delete(message, formatter._t["mute_failed"])
         return
     was_admin = isinstance(member, ChatMemberAdministrator)
     admin_perms: dict | None = None
@@ -259,7 +309,7 @@ async def cmd_amute(
                 chat_id=chat_id, user_id=target.id, **{f: False for f in _ADMIN_PERM_FIELDS}
             )
         except Exception:
-            await reply_and_delete(message,formatter._t["mute_failed"])
+            await reply_and_delete(message, formatter._t["mute_failed"])
             return
     try:
         await bot.restrict_chat_member(
@@ -274,7 +324,7 @@ async def cmd_amute(
                 await bot.promote_chat_member(chat_id=chat_id, user_id=target.id, **_promote_kwargs(admin_perms))
             except Exception:
                 logger.exception("Failed to restore admin rights after amute failure")
-        await reply_and_delete(message,formatter._t["mute_failed"])
+        await reply_and_delete(message, formatter._t["mute_failed"])
         return
     await mute_service.save_mute(
         MuteEntry(
@@ -288,7 +338,8 @@ async def cmd_amute(
     )
     actor_link = user_link(message.from_user.username, message.from_user.full_name or "", message.from_user.id)
     target_link = user_link(target.username, target.full_name, target.id)
-    await reply_and_delete(message,
+    await reply_and_delete(
+        message,
         formatter._t["amute_success"].format(actor=actor_link, target=target_link, minutes=minutes),
         parse_mode=ParseMode.HTML,
         link_preview_options=NO_PREVIEW,
@@ -310,18 +361,20 @@ async def cmd_selfmute(
     min_sec = mute_cfg.selfmute_min_minutes * 60
     max_sec = mute_cfg.selfmute_max_minutes * 60
     if not command.args:
-        await reply_and_delete(message,
+        await reply_and_delete(
+            message,
             formatter._t["selfmute_usage"].format(
                 min=mute_cfg.selfmute_min_minutes, max=mute_cfg.selfmute_max_minutes
-            )
+            ),
         )
         return
     seconds = parse_duration(command.args)
     if seconds is None or seconds <= 0 or seconds < min_sec or seconds > max_sec:
-        await reply_and_delete(message,
+        await reply_and_delete(
+            message,
             formatter._t["selfmute_invalid_minutes"].format(
                 min=mute_cfg.selfmute_min_minutes, max=mute_cfg.selfmute_max_minutes
-            )
+            ),
         )
         return
     bot = message.bot
@@ -333,7 +386,7 @@ async def cmd_selfmute(
     try:
         member = await bot.get_chat_member(chat_id, user_id)
         if isinstance(member, ChatMemberOwner):
-            await reply_and_delete(message,formatter._t["selfmute_failed"])
+            await reply_and_delete(message, formatter._t["selfmute_failed"])
             return
         if isinstance(member, ChatMemberAdministrator):
             was_admin = True
@@ -343,7 +396,7 @@ async def cmd_selfmute(
             )
     except TelegramBadRequest as e:
         logger.warning("selfmute pre-check failed for user %d: %s", user_id, e)
-        await reply_and_delete(message,formatter._t["selfmute_failed"])
+        await reply_and_delete(message, formatter._t["selfmute_failed"])
         return
     try:
         await bot.restrict_chat_member(
@@ -355,7 +408,7 @@ async def cmd_selfmute(
                 await bot.promote_chat_member(chat_id=chat_id, user_id=user_id, **_promote_kwargs(admin_perms))
             except Exception:
                 logger.exception("Failed to restore admin rights after selfmute failure for user %d", user_id)
-        await reply_and_delete(message,formatter._t["selfmute_failed"])
+        await reply_and_delete(message, formatter._t["selfmute_failed"])
         return
     await mute_service.save_mute(
         MuteEntry(
@@ -368,7 +421,8 @@ async def cmd_selfmute(
         )
     )
     user_link_str = user_link(message.from_user.username, message.from_user.full_name or "", user_id)
-    await reply_and_delete(message,
+    await reply_and_delete(
+        message,
         formatter._t["selfmute_success"].format(user=user_link_str, duration=format_duration(seconds)),
         parse_mode=ParseMode.HTML,
         link_preview_options=NO_PREVIEW,
@@ -382,13 +436,14 @@ async def cmd_unmute(
     command: CommandObject,
     mute_service: FromDishka[MuteService],
     user_repo: FromDishka[IUserRepository],
+    store: FromDishka[RedisStore],
     formatter: FromDishka[MessageFormatter],
     config: FromDishka[AppConfig],
 ) -> None:
     if message.from_user is None or message.bot is None:
         return
     if not is_admin(message.from_user.username, config.admin.users):
-        await reply_and_delete(message,formatter._t["admin_not_allowed"])
+        await reply_and_delete(message, formatter._t["admin_not_allowed"])
         return
     target = await _resolve_username(command.args, user_repo)
     if target is None:
@@ -399,19 +454,34 @@ async def cmd_unmute(
             tg = reply.from_user
             target = DomainUser(id=tg.id, username=tg.username, full_name=tg.full_name or str(tg.id))
         else:
-            await reply_and_delete(message,formatter._t["unmute_usage"])
+            await reply_and_delete(message, formatter._t["unmute_usage"])
             return
     display = user_link(target.username, target.full_name, target.id)
-    entry = await mute_service._repo.get(target.id, message.chat.id)
+    chat_id = message.chat.id
+
+    # Проверяем owner-mute (Redis soft-mute)
+    if await store.owner_mute_active(chat_id, target.id):
+        await store.owner_mute_delete(chat_id, target.id)
+        await reply_and_delete(
+            message,
+            formatter._t["unmute_success"].format(user=display),
+            parse_mode=ParseMode.HTML,
+            link_preview_options=NO_PREVIEW,
+        )
+        return
+
+    entry = await mute_service._repo.get(target.id, chat_id)
     if entry is None:
-        await reply_and_delete(message,
+        await reply_and_delete(
+            message,
             formatter._t["unmute_not_muted"].format(user=display),
             parse_mode=ParseMode.HTML,
             link_preview_options=NO_PREVIEW,
         )
         return
     await _unmute_user(message.bot, mute_service, entry)
-    await reply_and_delete(message,
+    await reply_and_delete(
+        message,
         formatter._t["unmute_success"].format(user=display),
         parse_mode=ParseMode.HTML,
         link_preview_options=NO_PREVIEW,

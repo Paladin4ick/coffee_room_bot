@@ -155,6 +155,11 @@ class RenewConfig(_BaseConfig):
     daily_limit: int = 2      # сколько раз в сутки можно использовать /renew
 
 
+class BugConfig(_BaseConfig):
+    """Конфиг для команды /bug — кому отправлять баг-репорты."""
+    recipients: list[int] = []  # Telegram user_id получателей (должны начать чат с ботом)
+
+
 class AppConfig(_BaseConfig):
     score: ScoreConfig = ScoreConfig()
     reactions: dict[str, int] = {}
@@ -171,6 +176,7 @@ class AppConfig(_BaseConfig):
     llm: LlmConfig = LlmConfig()
     system: SystemConfig = SystemConfig()
     renew: RenewConfig = RenewConfig()
+    bug: BugConfig = BugConfig()
 
 
 def load_config(path: str | Path | None = None) -> AppConfig:

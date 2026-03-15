@@ -39,6 +39,14 @@ router = Router(name="giveaway")
 
 _DURATION_RE = re.compile(r"^(\d+)(m|h)$")
 
+# Алиасы периодов и расширенный формат (m/h/d/w)
+_PERIOD_ALIASES: dict[str, int] = {
+    "hourly": 3600,
+    "daily": 86400,
+    "weekly": 604800,
+}
+_PERIOD_RE = re.compile(r"^(\d+)(m|h|d|w)$")
+
 
 def _parse_duration(token: str) -> timedelta | None:
     m = _DURATION_RE.match(token.lower())
@@ -46,6 +54,39 @@ def _parse_duration(token: str) -> timedelta | None:
         return None
     value, unit = int(m.group(1)), m.group(2)
     return timedelta(minutes=value) if unit == "m" else timedelta(hours=value)
+
+
+def _parse_period(token: str) -> int | None:
+    """Разобрать период гивэвея в секундах.
+
+    Поддерживаемые форматы: hourly, daily, weekly, Xm, Xh, Xd, Xw.
+    """
+    ltoken = token.lower()
+    if ltoken in _PERIOD_ALIASES:
+        return _PERIOD_ALIASES[ltoken]
+    m = _PERIOD_RE.match(ltoken)
+    if not m:
+        return None
+    value, unit = int(m.group(1)), m.group(2)
+    multipliers = {"m": 60, "h": 3600, "d": 86400, "w": 604800}
+    secs = value * multipliers[unit]
+    return secs if secs >= 60 else None
+
+
+def _period_label(period_seconds: int) -> str:
+    """Человекочитаемое название периода."""
+    if period_seconds % 604800 == 0:
+        n = period_seconds // 604800
+        return f"{n}н" if n > 1 else "еженедельно"
+    if period_seconds % 86400 == 0:
+        n = period_seconds // 86400
+        return f"{n}д" if n > 1 else "ежедневно"
+    if period_seconds % 3600 == 0:
+        n = period_seconds // 3600
+        return f"{n}ч" if n > 1 else "ежечасно"
+    if period_seconds % 60 == 0:
+        return f"{period_seconds // 60}м"
+    return f"{period_seconds}с"
 
 
 # is_admin imported from bot.domain.bot_utils
@@ -137,6 +178,159 @@ async def cmd_giveaway(
     )
     sent = await message.answer(text, parse_mode="HTML", reply_markup=_join_kb(giveaway.id, 0))
     await service.set_message_id(giveaway.id, sent.message_id)
+
+
+# ─── /giveaway_period ───────────────────────────────────────────────────────
+
+
+@router.message(Command("giveaway_period"))
+@inject
+async def cmd_giveaway_period(
+    message: Message,
+    service: FromDishka[GiveawayService],
+    store: FromDishka[RedisStore],
+    config: FromDishka[AppConfig],
+    pluralizer: FromDishka[ScorePluralizer],
+) -> None:
+    """Запускает периодический розыгрыш.
+
+    Синтаксис: /giveaway_period <период> <приз1> [приз2 ...] [длительность_раунда]
+
+    Примеры:
+      /giveaway_period hourly 500 100       — ежечасно, без ограничения времени
+      /giveaway_period daily 1000 500 2h    — ежедневно, каждый раунд 2 часа
+      /giveaway_period weekly 5000 1000 1d  — еженедельно, раунд 1 день
+      /giveaway_period 6h 200 100           — каждые 6 часов
+    """
+    if not is_admin(message.from_user and message.from_user.username, config.admin.users):
+        await reply_and_delete(message, "⛔ Только администраторы могут создавать периодические розыгрыши.")
+        return
+
+    args = (message.text or "").split()[1:]
+    if len(args) < 2:
+        await reply_and_delete(
+            message,
+            "Использование: <code>/giveaway_period &lt;период&gt; &lt;приз1&gt; [приз2 ...] [длительность]</code>\n\n"
+            "Периоды: <code>hourly</code>, <code>daily</code>, <code>weekly</code>, <code>6h</code>, <code>30m</code> и т.д.\n"
+            "Длительность раунда (опционально): <code>30m</code>, <code>2h</code>\n\n"
+            "Пример: <code>/giveaway_period daily 500 100 2h</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    period_seconds = _parse_period(args[0])
+    if period_seconds is None:
+        await reply_and_delete(
+            message,
+            f"❌ Неверный период: <code>{args[0]}</code>\n"
+            "Используй: <code>hourly</code>, <code>daily</code>, <code>weekly</code> или формат <code>Xm/Xh/Xd/Xw</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    rest = args[1:]
+    # Последний аргумент может быть длительностью раунда
+    round_duration: timedelta | None = None
+    if rest:
+        dur = _parse_duration(rest[-1])
+        if dur is not None:
+            round_duration = dur
+            rest = rest[:-1]
+
+    prizes: list[int] = []
+    for token in rest:
+        if not token.isdigit() or int(token) <= 0:
+            await reply_and_delete(message, f"❌ Неверное значение приза: <code>{token}</code>", parse_mode="HTML")
+            return
+        prizes.append(int(token))
+
+    if not prizes:
+        await reply_and_delete(message, "❌ Укажи хотя бы один приз.")
+        return
+
+    round_dur_secs = int(round_duration.total_seconds()) if round_duration else None
+    gp_id = await store.giveaway_period_create(
+        chat_id=message.chat.id,
+        created_by=message.from_user.id,
+        prizes=prizes,
+        period_seconds=period_seconds,
+        round_duration_seconds=round_dur_secs,
+    )
+
+    period_str = _period_label(period_seconds)
+    prizes_str = _format_prizes(prizes, pluralizer)
+    round_str = f"{round_duration}" if round_duration else "вручную"
+    if round_duration:
+        total_minutes = int(round_duration.total_seconds() // 60)
+        if total_minutes >= 60:
+            round_str = f"{total_minutes // 60}ч"
+        else:
+            round_str = f"{total_minutes}м"
+
+    await reply_and_delete(
+        message,
+        f"🔁 <b>Периодический розыгрыш создан!</b>\n\n"
+        f"{prizes_str}\n\n"
+        f"🕐 Период: <b>{period_str}</b>\n"
+        f"⏰ Длительность раунда: <b>{round_str}</b>\n"
+        f"🆔 GP ID: <code>{gp_id}</code>\n\n"
+        f"Первый раунд стартует через ~1 минуту.\n"
+        f"Остановить: <code>/giveaway_period_stop {gp_id}</code>",
+        parse_mode="HTML",
+        delay=60,
+    )
+
+
+# ─── /giveaway_period_stop ───────────────────────────────────────────────────
+
+
+@router.message(Command("giveaway_period_stop"))
+@inject
+async def cmd_giveaway_period_stop(
+    message: Message,
+    store: FromDishka[RedisStore],
+    config: FromDishka[AppConfig],
+    pluralizer: FromDishka[ScorePluralizer],
+) -> None:
+    """Останавливает периодический розыгрыш по ID или единственный активный."""
+    if not is_admin(message.from_user and message.from_user.username, config.admin.users):
+        await reply_and_delete(message, "⛔ Только администраторы могут останавливать периодические розыгрыши.")
+        return
+
+    chat_id = message.chat.id
+    args = (message.text or "").split()[1:]
+
+    gp_id: str | None = args[0] if args else None
+
+    if gp_id is None:
+        active = await store.giveaway_period_list(chat_id)
+        if not active:
+            await reply_and_delete(message, "Нет активных периодических розыгрышей.")
+            return
+        if len(active) == 1:
+            gp_id = active[0][0]
+        else:
+            lines = ["Несколько активных периодических розыгрышей, укажи ID:\n"]
+            for pid, data in active:
+                prizes_str = " / ".join(f"{p} {pluralizer.pluralize(p)}" for p in data["prizes"])
+                lines.append(
+                    f"<code>/giveaway_period_stop {pid}</code> — {prizes_str}, {_period_label(data['period_seconds'])}"
+                )
+            await reply_and_delete(message, "\n".join(lines), parse_mode="HTML")
+            return
+
+    data = await store.giveaway_period_delete(chat_id, gp_id)
+    if data is None:
+        await reply_and_delete(message, "❌ Периодический розыгрыш не найден.")
+        return
+
+    prizes_str = " / ".join(f"{p} {pluralizer.pluralize(p)}" for p in data["prizes"])
+    await reply_and_delete(
+        message,
+        f"⏹ Периодический розыгрыш <code>{gp_id}</code> остановлен.\n"
+        f"Призы были: {prizes_str}",
+        parse_mode="HTML",
+    )
 
 
 # ─── /giveaway_end ──────────────────────────────────────────────────────────

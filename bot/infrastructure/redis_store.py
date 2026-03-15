@@ -18,6 +18,8 @@ _BJ_HISTORY = "bj:hist:"  # bj:hist:{user_id}:{chat_id}  (sorted set)
 _SLOTS_DAILY = "slots:daily:"  # slots:daily:{user_id}:{chat_id}
 _SLOTS_LAST = "slots:last:"  # slots:last:{user_id}:{chat_id}
 _JACKPOT = "slots:jackpot:"  # slots:jackpot:{chat_id}
+_OWNER_MUTE = "owner_mute:"  # owner_mute:{chat_id}:{user_id}
+_GIVEAWAY_PERIOD = "giveaway_period:"  # giveaway_period:{chat_id}:{gp_id}
 
 
 def _serialize_round(
@@ -357,3 +359,101 @@ class RedisStore:
         if raw is None:
             return 0
         return len(json.loads(raw)["participants"])
+
+    # ── Owner mute (soft-mute: удаление сообщений) ───────────────
+    # Используется когда цель мута — владелец чата (ChatMemberOwner),
+    # которого нельзя ограничить через Telegram API.
+    # Ключ: owner_mute:{chat_id}:{user_id}  →  unix-timestamp окончания
+
+    async def owner_mute_set(self, chat_id: int, user_id: int, until_ts: float) -> None:
+        """Установить owner-мут до until_ts (unix timestamp)."""
+        key = f"{_OWNER_MUTE}{chat_id}:{user_id}"
+        ttl = max(int(until_ts - time.time()) + 10, 60)
+        await self._r.set(key, str(until_ts), ex=ttl)
+
+    async def owner_mute_active(self, chat_id: int, user_id: int) -> bool:
+        """Проверить, активен ли owner-мут прямо сейчас."""
+        key = f"{_OWNER_MUTE}{chat_id}:{user_id}"
+        raw = await self._r.get(key)
+        if raw is None:
+            return False
+        return float(raw) > time.time()
+
+    async def owner_mute_delete(self, chat_id: int, user_id: int) -> None:
+        """Снять owner-мут досрочно."""
+        key = f"{_OWNER_MUTE}{chat_id}:{user_id}"
+        await self._r.delete(key)
+
+    # ── Периодические гивэвеи ─────────────────────────────────────
+    # Ключ: giveaway_period:{chat_id}:{gp_id}
+    # TTL не ставится — запись живёт до явного удаления командой stop.
+
+    def _gp_key(self, chat_id: int, gp_id: str) -> str:
+        return f"{_GIVEAWAY_PERIOD}{chat_id}:{gp_id}"
+
+    async def giveaway_period_create(
+        self,
+        chat_id: int,
+        created_by: int,
+        prizes: list[int],
+        period_seconds: int,
+        round_duration_seconds: int | None,
+    ) -> str:
+        """Создать периодический гивэвей. Возвращает gp_id."""
+        import random as _random
+
+        gp_id = str(_random.randint(10000, 99999))
+        key = self._gp_key(chat_id, gp_id)
+        data = json.dumps(
+            {
+                "gp_id": gp_id,
+                "chat_id": chat_id,
+                "created_by": created_by,
+                "prizes": prizes,
+                "period_seconds": period_seconds,
+                "round_duration_seconds": round_duration_seconds,
+                "next_run": time.time(),  # запустить немедленно
+            }
+        )
+        await self._r.set(key, data)  # без TTL — живёт до /giveaway_period_stop
+        return gp_id
+
+    async def giveaway_period_list(self, chat_id: int) -> list[tuple[str, dict]]:
+        """Все активные периодические гивэвеи в чате."""
+        results = []
+        async for key in self._r.scan_iter(f"{_GIVEAWAY_PERIOD}{chat_id}:*"):
+            raw = await self._r.get(key)
+            if raw is None:
+                continue
+            data = json.loads(raw)
+            results.append((data["gp_id"], data))
+        return results
+
+    async def giveaway_period_all(self) -> list[dict]:
+        """Все периодические гивэвеи по всем чатам (для фонового луп)."""
+        results = []
+        async for key in self._r.scan_iter(f"{_GIVEAWAY_PERIOD}*"):
+            raw = await self._r.get(key)
+            if raw is None:
+                continue
+            results.append(json.loads(raw))
+        return results
+
+    async def giveaway_period_update_next_run(self, chat_id: int, gp_id: str, next_run: float) -> None:
+        """Обновить время следующего запуска."""
+        key = self._gp_key(chat_id, gp_id)
+        raw = await self._r.get(key)
+        if raw is None:
+            return
+        data = json.loads(raw)
+        data["next_run"] = next_run
+        await self._r.set(key, json.dumps(data))
+
+    async def giveaway_period_delete(self, chat_id: int, gp_id: str) -> dict | None:
+        """Удалить периодический гивэвей. Возвращает данные или None."""
+        key = self._gp_key(chat_id, gp_id)
+        raw = await self._r.get(key)
+        await self._r.delete(key)
+        if raw is None:
+            return None
+        return json.loads(raw)

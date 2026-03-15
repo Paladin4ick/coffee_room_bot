@@ -11,11 +11,12 @@ from dishka.integrations.aiogram import setup_dishka
 from bot.infrastructure.config_loader import Settings, load_config
 from bot.infrastructure.di import AppProvider, RequestProvider
 from bot.infrastructure.dice_loop import dice_loop
-from bot.infrastructure.giveaway_loop import giveaway_loop
+from bot.infrastructure.giveaway_loop import giveaway_loop, giveaway_period_loop
 from bot.presentation.handlers._admin_utils import _unmute_user
 from bot.presentation.handlers.admin_score import router as admin_score_router
 from bot.presentation.handlers.admin_user import router as admin_user_router
 from bot.presentation.handlers.blackjack import router as blackjack_router
+from bot.presentation.handlers.bug import router as bug_router
 from bot.presentation.handlers.commands import router as commands_router
 from bot.presentation.handlers.dice import router as dice_router
 from bot.presentation.handlers.giveaway import router as giveaway_router
@@ -30,6 +31,7 @@ from bot.presentation.handlers.renew import router as renew_router
 from bot.presentation.handlers.transfer import router as transfer_router
 from bot.presentation.middlewares.auto_delete import AutoDeleteCommandMiddleware
 from bot.presentation.middlewares.chat_context import ChatContextMiddleware
+from bot.presentation.middlewares.owner_mute import OwnerMuteDeleteMiddleware
 from bot.presentation.middlewares.retry_network import RetryNetworkMiddleware
 from bot.presentation.middlewares.track_message import TrackMessageMiddleware
 from bot.presentation import utils as presentation_utils
@@ -153,8 +155,6 @@ async def main() -> None:
     # ── Redis ────────────────────────────────────────────────────
     # Отдельное соединение для очереди удалений (вне DI-контейнера),
     # чтобы delete_loop мог работать независимо от dishka-скопов.
-    # DI-контейнер создаёт своё соединение для RedisStore — это нормально,
-    # Redis поддерживает множество параллельных клиентов.
     redis = aioredis.from_url(settings.redis_url, decode_responses=True)
 
     # Передаём redis в presentation.utils — schedule_delete/schedule_delete_id
@@ -164,19 +164,14 @@ async def main() -> None:
     container = make_async_container(AppProvider(), RequestProvider())
 
     # TELEGRAM_PROXY — опциональный SOCKS5/HTTP прокси для обхода блокировок.
-    # Примеры: socks5://user:pass@1.2.3.4:1080  или  http://1.2.3.4:3128
-    # Если переменная не задана — работаем без прокси (прямое подключение).
     proxy = os.getenv("TELEGRAM_PROXY") or None
     if proxy:
         logger.info("Using Telegram proxy: %s", proxy)
 
-    # Короткий таймаут: не ждём 60 с на SSL handshake, падаем быстро и идём дальше
-    # AiohttpSession принимает timeout как int (секунды), не ClientTimeout
     session = AiohttpSession(timeout=15, proxy=proxy)
     bot = Bot(token=settings.bot_token, session=session)
 
     # Кешируем информацию о боте один раз при старте.
-    # TrackMessageMiddleware использует это вместо bot.get_me() на каждый авто-реакт.
     bot_me = await bot.get_me()
     logger.info("Bot identity cached: @%s (id=%d)", bot_me.username, bot_me.id)
 
@@ -220,24 +215,28 @@ async def main() -> None:
     dp.include_router(admin_score_router)
     dp.include_router(admin_user_router)
     dp.include_router(help_router)
+    dp.include_router(bug_router)
     logger.info(
         "Commands: /add, /sub, /set, /reset, /op, /deop, /mute,"
         " /amute, /selfmute, /unmute, /tag, /transfer,"
-        " /protect, /save, /restore, /help, /limits"
+        " /protect, /save, /restore, /help, /limits, /bug,"
+        " /giveaway_period, /giveaway_period_stop"
     )
 
     setup_dishka(container, dp)
     # Передаём кешированный bot_me — middleware не будет вызывать get_me() при каждом авто-реакте
     dp.message.outer_middleware(TrackMessageMiddleware(bot_me=bot_me))
+    # Owner-mute: удаляет сообщения участников под soft-mute (регистрируем после dishka)
+    dp.message.outer_middleware(OwnerMuteDeleteMiddleware())
 
     sys_cfg = config.system
     cleanup_task = asyncio.create_task(cleanup_loop(container, sys_cfg.cleanup_interval_hours))
     unmute_task = asyncio.create_task(unmute_loop(container, bot, sys_cfg.unmute_check_interval_seconds))
     giveaway_task = asyncio.create_task(giveaway_loop(bot, container))
+    giveaway_period_task = asyncio.create_task(giveaway_period_loop(bot, container))
     dice_task = asyncio.create_task(dice_loop(bot, container))
     mute_roulette_task = asyncio.create_task(mute_roulette_loop(container, bot))
     bj_cleanup_task = asyncio.create_task(bj_cleanup_loop(container, bot))
-    # delete_loop теперь принимает redis — читает очередь из общего Redis sorted set
     delete_task = asyncio.create_task(delete_loop(bot, redis))
 
     logger.info("Bot starting…")
@@ -250,6 +249,7 @@ async def main() -> None:
         cleanup_task.cancel()
         unmute_task.cancel()
         giveaway_task.cancel()
+        giveaway_period_task.cancel()
         dice_task.cancel()
         mute_roulette_task.cancel()
         bj_cleanup_task.cancel()
